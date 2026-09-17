@@ -4,6 +4,7 @@ name: iOS build and tests
 # а macOS-минуты в приватном репо идут x10.
 on:
   push:
+    paths-ignore: ["**.md"]
   workflow_dispatch:
 
 jobs:
