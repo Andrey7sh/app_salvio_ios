@@ -1,0 +1,52 @@
+name: Salvio
+options:
+  bundleIdPrefix: io.salvio
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.3"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    # Свой Team ID подставляется в Xcode (Signing & Capabilities), в git не храним.
+    DEVELOPMENT_TEAM: ""
+targets:
+  Salvio:
+    type: application
+    platform: iOS
+    sources: [Salvio]
+    info:
+      path: Salvio/Info.plist
+      properties:
+        CFBundleDisplayName: Salvio
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        NSMicrophoneUsageDescription: Salvio записывает встречу, чтобы сделать транскрипт и итоги по вашему сценарию.
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.salvio.app
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  SalvioTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [SalvioTests]
+    dependencies:
+      - target: Salvio
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Salvio:
+    build:
+      targets:
+        Salvio: all
+        SalvioTests: [test]
+    test:
+      targets: [SalvioTests]

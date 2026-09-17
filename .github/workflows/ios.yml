@@ -1,0 +1,48 @@
+name: iOS build and tests
+
+# Только push: при открытом PR pull_request запускал бы второй прогон на тот же коммит,
+# а macOS-минуты в приватном репо идут x10.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Pick simulator
+        # Имена симуляторов меняются от образа к образу, берём первый доступный iPhone.
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))')
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Build and test (simulator, no signing)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Salvio.xcodeproj \
+            -scheme Salvio \
+            -destination "id=$SIM_UDID" \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild.log | grep -E "error:|warning: .*(Salvio/|SalvioTests/)|Test Case .*(passed|failed)|\*\* (TEST|BUILD) (SUCCEEDED|FAILED)"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-logs
+          path: |
+            xcodebuild.log
+            TestResults.xcresult
+          if-no-files-found: ignore

@@ -1,0 +1,11 @@
+# XcodeGen генерирует проект и Info.plist из project.yml
+*.xcodeproj
+*.xcworkspace
+Salvio/Info.plist
+
+xcuserdata/
+DerivedData/
+build/
+*.xcresult
+.DS_Store
+.env
