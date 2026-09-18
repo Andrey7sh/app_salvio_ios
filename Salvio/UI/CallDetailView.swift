@@ -125,8 +125,9 @@ struct CallDetailView: View {
         case "awaiting_payment"?:
             GroupBox {
                 VStack(alignment: .leading, spacing: 6) {
-                    Label("Не хватило минут на балансе", systemImage: "exclamationmark.circle").font(.headline)
-                    Text("Запись сохранена. Пополните минуты в веб-кабинете, и она обработается автоматически.")
+                    Label("Недостаточно минут на балансе", systemImage: "exclamationmark.circle").font(.headline)
+                    // App Store 3.1.3(f): без призывов к оплате вне приложения, только состояние.
+                    Text("Запись сохранена и обработается, когда минуты появятся.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

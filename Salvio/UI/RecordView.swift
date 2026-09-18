@@ -52,7 +52,7 @@ struct RecordView: View {
             if let balance = session.balance {
                 Text("На балансе: \(balance.balanceMinutes) мин")
                 if balance.lowBalance {
-                    Text("Минут почти не осталось. Записи без минут сохранятся и обработаются после пополнения в веб-кабинете")
+                    Text("Минут почти не осталось. Записи сохранятся и обработаются, когда минуты появятся")
                         .font(.footnote).foregroundColor(.orange)
                 }
             } else {

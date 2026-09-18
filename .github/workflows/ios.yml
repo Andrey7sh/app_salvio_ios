@@ -38,6 +38,21 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | tee xcodebuild.log | grep -E "error:|warning: .*(Salvio/|SalvioTests/)|Test Case .*(passed|failed)|\*\* (TEST|BUILD) (SUCCEEDED|FAILED)"
 
+      - name: Build simulator app for Appetize
+        # Release под симулятор для arm64 и x86_64: Appetize запускает его в браузере без Mac.
+        run: |
+          set -o pipefail
+          xcodebuild build             -project Salvio.xcodeproj             -scheme Salvio             -configuration Release             -sdk iphonesimulator             -derivedDataPath build             ONLY_ACTIVE_ARCH=NO ARCHS="arm64 x86_64"             CODE_SIGNING_ALLOWED=NO             | grep -E "error:|\*\* BUILD (SUCCEEDED|FAILED)"
+          cd build/Build/Products/Release-iphonesimulator
+          ditto -c -k --sequesterRsrc --keepParent Salvio.app "$GITHUB_WORKSPACE/Salvio-simulator.zip"
+
+      - name: Upload simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Salvio-simulator
+          path: Salvio-simulator.zip
+          retention-days: 14
+
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4

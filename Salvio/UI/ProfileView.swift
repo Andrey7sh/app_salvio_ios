@@ -25,7 +25,7 @@ struct ProfileView: View {
                     LabeledContent("Профиль работы", value: session.user?.defaultScenario?.label ?? "не выбран")
                     LabeledContent("На балансе", value: session.balance.map { "\($0.balanceMinutes) мин" } ?? "…")
                 } footer: {
-                    Text("Профиль работы и минуты настраиваются в веб-кабинете")
+                    Text("Профиль работы настраивается в веб-кабинете")
                 }
                 Section {
                     Link("Пользовательское соглашение", destination: URL(string: "https://salvio.io/mob_terms")!)
