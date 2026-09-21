@@ -53,4 +53,24 @@ final class UILogicTests: XCTestCase {
     func testDeviceIdentifierLooksLikeModel() {
         XCTAssertFalse(Support.deviceIdentifier.isEmpty)
     }
+
+    /// Список встреч переживает отсутствие сети: сохраняем последнюю страницу и читаем её обратно.
+    func testCallsCacheRoundTrip() throws {
+        CallsCache.clear()
+        XCTAssertTrue(CallsCache.load().isEmpty)
+
+        let items = (0..<(CallsCache.limit + 10)).map {
+            CallItem(id: "c\($0)", title: "Встреча \($0)", startedAt: "2026-09-21T10:00:00+00:00", durationSeconds: 60, status: "done")
+        }
+        CallsCache.save(items)
+
+        let cached = CallsCache.load()
+        XCTAssertEqual(cached.count, CallsCache.limit, "кэш не должен расти бесконечно")
+        XCTAssertEqual(cached.first?.id, "c0")
+        XCTAssertEqual(cached.first?.title, "Встреча 0")
+        XCTAssertEqual(cached.first?.status, "done")
+
+        CallsCache.clear()
+        XCTAssertTrue(CallsCache.load().isEmpty, "после выхода из аккаунта кэш пуст")
+    }
 }

@@ -48,7 +48,7 @@ struct CallsPage: Decodable {
     let totalPages: Int
 }
 
-struct CallItem: Decodable, Identifiable, Hashable {
+struct CallItem: Codable, Identifiable, Hashable {
     let id: String
     let title: String?
     let startedAt: String?

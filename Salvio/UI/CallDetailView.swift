@@ -148,7 +148,7 @@ struct CallDetailView: View {
 
     @ViewBuilder private var resultBlock: some View {
         if let url = model.detail?.audioUrl.flatMap(URL.init(string:)) {
-            AudioPlayerButton(url: url)
+            AudioPlayerView(url: url, fallbackDuration: Double(model.detail?.durationSeconds ?? 0))
         }
         shareBlock
         if let label = model.result?.scenario?.label {
@@ -233,36 +233,3 @@ private struct ChecklistBlock: View {
     }
 }
 
-private struct AudioPlayerButton: View {
-    let url: URL
-    @ObservedObject private var recorder = Recorder.shared
-    @State private var player: AVPlayer?
-    @State private var playing = false
-
-    var body: some View {
-        Button {
-            toggle()
-        } label: {
-            Label(playing ? "Пауза" : "Аудиозапись встречи", systemImage: playing ? "pause.circle.fill" : "play.circle.fill")
-        }
-        // Смена категории аудиосессии на воспроизведение оборвала бы идущую запись.
-        .disabled(recorder.isRecording)
-        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { _ in
-            playing = false
-            player?.seek(to: .zero)
-        }
-        .onDisappear { player?.pause() }
-    }
-
-    private func toggle() {
-        if playing {
-            player?.pause()
-        } else {
-            try? AVAudioSession.sharedInstance().setCategory(.playback)
-            try? AVAudioSession.sharedInstance().setActive(true)
-            if player == nil { player = AVPlayer(url: url) }
-            player?.play()
-        }
-        playing.toggle()
-    }
-}

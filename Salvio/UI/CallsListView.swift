@@ -4,6 +4,8 @@ import SwiftUI
 final class CallsModel: ObservableObject {
     @Published private(set) var items: [CallItem] = []
     @Published private(set) var loaded = false
+    /// Список взят из кэша: сервер недоступен.
+    @Published private(set) var offline = false
     @Published var error: String?
     private var page = 0
     private var totalPages = 1
@@ -25,8 +27,17 @@ final class CallsModel: ObservableObject {
             page = result.page
             totalPages = result.totalPages
             error = nil
+            offline = false
+            if page == 1 { CallsCache.save(items) }
         } catch {
-            self.error = error.localizedDescription
+            let cached = CallsCache.load()
+            if reset, !cached.isEmpty {
+                items = cached
+                offline = true
+                error = nil
+            } else {
+                self.error = error.localizedDescription
+            }
         }
         loaded = true
     }
@@ -51,6 +62,11 @@ struct CallsListView: View {
                 }
                 if let error = model.error {
                     Text(error).foregroundColor(.red)
+                }
+                if model.offline {
+                    Label("Нет связи с сервером, показаны сохранённые встречи", systemImage: "wifi.slash")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
                 }
                 Section {
                     ForEach(model.items) { item in

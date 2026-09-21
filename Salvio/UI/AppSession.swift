@@ -46,6 +46,7 @@ final class AppSession: ObservableObject {
     func logout() {
         TokenStore.clear()
         Uploader.shared.discardAll()
+        CallsCache.clear()
         signedOut()
     }
 
@@ -59,6 +60,7 @@ final class AppSession: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "userId")
         RecordingConsent.granted = false
         Uploader.shared.discardAll()
+        CallsCache.clear()
         signedOut()
     }
 
@@ -68,6 +70,7 @@ final class AppSession: ObservableObject {
         if let id = pair.user?.id, lastUserId != nil, lastUserId != id {
             // ponytail: записи прошлого аккаунта удаляются молча; если начнут жаловаться, спрашивать перед входом.
             Uploader.shared.discardAll()
+            CallsCache.clear()
         }
         UserDefaults.standard.set(pair.user?.id, forKey: "userId")
         user = pair.user
