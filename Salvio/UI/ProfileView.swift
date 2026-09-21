@@ -45,7 +45,8 @@ struct ProfileView: View {
                     Text("Без согласия новые записи не создаются. Уже загруженные встречи остаются в аккаунте, их можно удалить в веб-кабинете.")
                 }
                 Section {
-                    Link("Пользовательское соглашение", destination: URL(string: "https://salvio.io/mob_terms")!)
+                    Link("Пользовательское соглашение", destination: URL(string: "https://salvio.io/terms")!)
+                    Link("Политика конфиденциальности", destination: URL(string: "https://salvio.io/privacy")!)
                     Button("Написать в поддержку") {
                         if SupportMailView.canSend {
                             writingSupport = true

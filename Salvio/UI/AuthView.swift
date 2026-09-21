@@ -38,7 +38,7 @@ struct AuthView: View {
                 }
                 Section {
                     Toggle(isOn: $agreed) {
-                        Text("Я принимаю [пользовательское соглашение и политику конфиденциальности](https://salvio.io/mob_terms)")
+                        Text("Я принимаю [пользовательское соглашение и политику конфиденциальности](https://salvio.io/terms)")
                             .font(.footnote)
                     }
                 }
