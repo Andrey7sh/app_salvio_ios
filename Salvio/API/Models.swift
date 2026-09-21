@@ -133,6 +133,11 @@ struct StartCallResponse: Decodable {
     let id: String
 }
 
+struct DeleteAccountResponse: Decodable {
+    let deleted: Bool
+    let calls: Int?
+}
+
 struct StatusResponse: Decodable {
     let status: String?
 }

@@ -6,6 +6,7 @@ struct ProfileView: View {
     @ObservedObject private var uploader = Uploader.shared
     @State private var confirmLogout = false
     @State private var consentGranted = RecordingConsent.granted
+    @State private var deleting = false
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -52,9 +53,16 @@ struct ProfileView: View {
                 } footer: {
                     if recorder.isRecording { Text("Остановите запись перед выходом") }
                 }
+                Section {
+                    Button("Удалить аккаунт", role: .destructive) { deleting = true }
+                        .disabled(recorder.isRecording)
+                } footer: {
+                    Text("Аккаунт, все встречи, аудиозаписи, транскрипты и ссылки, которыми вы делились, удаляются без возможности восстановления.")
+                }
             }
             .navigationTitle("Профиль")
             .refreshable { await session.refresh() }
+            .sheet(isPresented: $deleting) { DeleteAccountView() }
             .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmLogout, titleVisibility: .visible) {
                 Button("Выйти", role: .destructive) { session.logout() }
             } message: {

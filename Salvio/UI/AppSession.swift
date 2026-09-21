@@ -49,6 +49,19 @@ final class AppSession: ObservableObject {
         signedOut()
     }
 
+    /// Удаление аккаунта из приложения (требование App Store 5.1.1(v)).
+    /// Сервер удаляет встречи, аудио, транскрипты и публичные ссылки.
+    func deleteAccount(password: String) async throws {
+        struct Input: Encodable { let password: String }
+        let _: DeleteAccountResponse = try await APIClient.shared.send("DELETE", "auth/me", body: .json(Input(password: password)))
+        appLog("account", "аккаунт удалён по запросу пользователя")
+        TokenStore.clear()
+        UserDefaults.standard.removeObject(forKey: "userId")
+        RecordingConsent.granted = false
+        Uploader.shared.discardAll()
+        signedOut()
+    }
+
     private func signedIn(_ pair: TokenPair) {
         TokenStore.save(pair)
         let lastUserId = UserDefaults.standard.string(forKey: "userId")
