@@ -69,6 +69,23 @@ jobs:
           path: Salvio.ipa
           retention-days: 14
 
+      - name: Pack Xcode project for Mac
+        # Исходники вместе с готовым Salvio.xcodeproj: на Mac достаточно Xcode,
+        # ни Homebrew, ни XcodeGen, ни git ставить не нужно.
+        run: |
+          name="$(basename "$GITHUB_WORKSPACE")"
+          cd ..
+          zip -qry "$GITHUB_WORKSPACE/Salvio-xcode.zip" "$name" \
+            -x "$name/.git/*" "$name/build/*" "$name/build-device/*" "$name/Payload/*" \
+               "$name/TestResults.xcresult/*" "$name/xcodebuild.log" "$name/*.zip" "$name/*.ipa"
+
+      - name: Upload Xcode project
+        uses: actions/upload-artifact@v4
+        with:
+          name: Salvio-xcode
+          path: Salvio-xcode.zip
+          retention-days: 14
+
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
