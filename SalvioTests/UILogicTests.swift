@@ -39,4 +39,18 @@ final class UILogicTests: XCTestCase {
         ]
         XCTAssertEqual(Format.shareText(title: "Планёрка", sections: sections), "Планёрка\n\nИтоги:\nДоговорились\n\nЗадачи:\n• Отчёт")
     }
+
+    func testSupportLetterCarriesContext() {
+        let body = Support.body(email: "a@b.ru", version: "1.3 (4)", device: "iPhone15,2", system: "18.1")
+        XCTAssertTrue(body.contains("Аккаунт: a@b.ru"))
+        XCTAssertTrue(body.contains("Версия приложения: 1.3 (4)"))
+        XCTAssertTrue(body.contains("Телефон: iPhone15,2"))
+        XCTAssertTrue(body.contains("iOS: 18.1"))
+        XCTAssertEqual(Support.subject(version: "1.3 (4)"), "Salvio iOS 1.3 (4): обращение в поддержку")
+        XCTAssertTrue(Support.body(email: nil, version: "1", device: "d", system: "s").contains("Аккаунт: не определён"))
+    }
+
+    func testDeviceIdentifierLooksLikeModel() {
+        XCTAssertFalse(Support.deviceIdentifier.isEmpty)
+    }
 }

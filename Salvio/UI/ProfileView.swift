@@ -8,33 +8,12 @@ struct ProfileView: View {
     @State private var confirmLogout = false
     @State private var consentGranted = RecordingConsent.granted
     @State private var deleting = false
+    @State private var writingSupport = false
+    @State private var supportNote: String?
 
     private var version: String {
         let info = Bundle.main.infoDictionary
         return "\(info?["CFBundleShortVersionString"] as? String ?? "") (\(info?["CFBundleVersion"] as? String ?? ""))"
-    }
-
-    /// Письмо в поддержку с уже заполненными данными: аккаунт, версия, модель и iOS.
-    /// Иначе в обращении не хватает контекста и приходится переспрашивать.
-    private var supportMailURL: URL {
-        let body = """
-
-
-        ---
-        Данные для поддержки, не удаляйте:
-        Аккаунт: \(session.user?.email ?? "не определён")
-        Версия приложения: \(version)
-        Устройство: \(UIDevice.current.model)
-        iOS: \(UIDevice.current.systemVersion)
-        """
-        var components = URLComponents()
-        components.scheme = "mailto"
-        components.path = "support@salvio.io"
-        components.queryItems = [
-            URLQueryItem(name: "subject", value: "Salvio iOS \(version): обращение в поддержку"),
-            URLQueryItem(name: "body", value: body),
-        ]
-        return components.url ?? URL(string: "mailto:support@salvio.io")!
     }
 
     var body: some View {
@@ -67,9 +46,17 @@ struct ProfileView: View {
                 }
                 Section {
                     Link("Пользовательское соглашение", destination: URL(string: "https://salvio.io/mob_terms")!)
-                    Link("Написать в поддержку", destination: supportMailURL)
+                    Button("Написать в поддержку") {
+                        if SupportMailView.canSend {
+                            writingSupport = true
+                        } else {
+                            supportNote = Support.openMailtoOrCopy(email: session.user?.email)
+                        }
+                    }
                     NavigationLink("Диагностика") { DiagnosticsView() }
                     LabeledContent("Версия приложения", value: version)
+                } footer: {
+                    Text(supportNote ?? "К письму приложим журнал приложения: по нему видно, что происходило с записью и загрузкой.")
                 }
                 Section {
                     Button("Выйти", role: .destructive) { confirmLogout = true }
@@ -87,6 +74,7 @@ struct ProfileView: View {
             .navigationTitle("Профиль")
             .refreshable { await session.refresh() }
             .sheet(isPresented: $deleting) { DeleteAccountView() }
+            .sheet(isPresented: $writingSupport) { SupportMailView(email: session.user?.email) }
             .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmLogout, titleVisibility: .visible) {
                 Button("Выйти", role: .destructive) { session.logout() }
             } message: {
