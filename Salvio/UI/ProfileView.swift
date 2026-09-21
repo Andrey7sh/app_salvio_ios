@@ -5,6 +5,7 @@ struct ProfileView: View {
     @ObservedObject private var recorder = Recorder.shared
     @ObservedObject private var uploader = Uploader.shared
     @State private var confirmLogout = false
+    @State private var consentGranted = RecordingConsent.granted
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -26,6 +27,18 @@ struct ProfileView: View {
                     LabeledContent("На балансе", value: session.balance.map { "\($0.balanceMinutes) мин" } ?? "…")
                 } footer: {
                     Text("Профиль работы настраивается в веб-кабинете")
+                }
+                Section {
+                    Toggle("Согласие на запись и обработку", isOn: Binding(
+                        get: { consentGranted },
+                        set: { value in
+                            RecordingConsent.granted = value
+                            consentGranted = value
+                        }
+                    ))
+                    .disabled(recorder.isRecording)
+                } footer: {
+                    Text("Без согласия новые записи не создаются. Уже загруженные встречи остаются в аккаунте, их можно удалить в веб-кабинете.")
                 }
                 Section {
                     Link("Пользовательское соглашение", destination: URL(string: "https://salvio.io/mob_terms")!)

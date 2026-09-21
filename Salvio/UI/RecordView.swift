@@ -3,6 +3,7 @@ import SwiftUI
 struct RecordView: View {
     @EnvironmentObject private var session: AppSession
     @ObservedObject private var recorder = Recorder.shared
+    @State private var askConsent = false
 
     var body: some View {
         NavigationStack {
@@ -18,7 +19,13 @@ struct RecordView: View {
                     .multilineTextAlignment(.center)
 
                 Button {
-                    if recorder.isRecording { recorder.stop() } else { Task { await recorder.start() } }
+                    if recorder.isRecording {
+                        recorder.stop()
+                    } else if RecordingConsent.granted {
+                        Task { await recorder.start() }
+                    } else {
+                        askConsent = true
+                    }
                 } label: {
                     Image(systemName: recorder.isRecording ? "stop.fill" : "mic.fill")
                         .font(.system(size: 44))
@@ -46,6 +53,9 @@ struct RecordView: View {
             .padding()
             .navigationTitle("Запись")
             .task { await session.refresh() }
+            .sheet(isPresented: $askConsent) {
+                ConsentView { Task { await recorder.start() } }
+            }
         }
     }
 
