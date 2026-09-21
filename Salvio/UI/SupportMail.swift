@@ -78,9 +78,7 @@ struct SupportMailView: UIViewControllerRepresentable {
         // Журнал отправляем с той же шапкой: письмо могут переслать отдельно от вложения.
         if let log = RecordingLog.shared.exportFile(), let text = try? String(contentsOf: log, encoding: .utf8) {
             let header = Support.body(email: email, version: version, device: Support.deviceIdentifier, system: UIDevice.current.systemVersion)
-            let attachment = header + "
-
-" + text
+            let attachment = [header, "", text].joined(separator: "\n")
             controller.addAttachmentData(Data(attachment.utf8), mimeType: "text/plain", fileName: "salvio-log.txt")
         }
         return controller
