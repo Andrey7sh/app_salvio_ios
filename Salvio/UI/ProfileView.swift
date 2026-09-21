@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ProfileView: View {
     @EnvironmentObject private var session: AppSession
@@ -11,6 +12,29 @@ struct ProfileView: View {
     private var version: String {
         let info = Bundle.main.infoDictionary
         return "\(info?["CFBundleShortVersionString"] as? String ?? "") (\(info?["CFBundleVersion"] as? String ?? ""))"
+    }
+
+    /// Письмо в поддержку с уже заполненными данными: аккаунт, версия, модель и iOS.
+    /// Иначе в обращении не хватает контекста и приходится переспрашивать.
+    private var supportMailURL: URL {
+        let body = """
+
+
+        ---
+        Данные для поддержки, не удаляйте:
+        Аккаунт: \(session.user?.email ?? "не определён")
+        Версия приложения: \(version)
+        Устройство: \(UIDevice.current.model)
+        iOS: \(UIDevice.current.systemVersion)
+        """
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = "support@salvio.io"
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: "Salvio iOS \(version): обращение в поддержку"),
+            URLQueryItem(name: "body", value: body),
+        ]
+        return components.url ?? URL(string: "mailto:support@salvio.io")!
     }
 
     var body: some View {
@@ -43,7 +67,7 @@ struct ProfileView: View {
                 }
                 Section {
                     Link("Пользовательское соглашение", destination: URL(string: "https://salvio.io/mob_terms")!)
-                    Link("Поддержка", destination: URL(string: "https://t.me/salvio_support_bot")!)
+                    Link("Написать в поддержку", destination: supportMailURL)
                     NavigationLink("Диагностика") { DiagnosticsView() }
                     LabeledContent("Версия приложения", value: version)
                 }
