@@ -34,7 +34,7 @@ final class CallsModel: ObservableObject {
             if reset, !cached.isEmpty {
                 items = cached
                 offline = true
-                error = nil
+                self.error = nil
             } else {
                 self.error = error.localizedDescription
             }
