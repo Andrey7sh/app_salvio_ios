@@ -2,6 +2,7 @@
 *.xcodeproj
 *.xcworkspace
 Salvio/Info.plist
+SalvioWidgets/Info.plist
 
 xcuserdata/
 DerivedData/

@@ -30,6 +30,7 @@ struct ProfileView: View {
                 Section {
                     Link("Пользовательское соглашение", destination: URL(string: "https://salvio.io/mob_terms")!)
                     Link("Поддержка", destination: URL(string: "https://t.me/salvio_support_bot")!)
+                    NavigationLink("Диагностика") { DiagnosticsView() }
                     LabeledContent("Версия приложения", value: version)
                 }
                 Section {

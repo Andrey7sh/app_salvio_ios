@@ -2,7 +2,8 @@ name: Salvio
 options:
   bundleIdPrefix: io.salvio
   deploymentTarget:
-    iOS: "16.0"
+    # 16.2: Live Activity (индикатор записи на экране блокировки) и современный ActivityKit.
+    iOS: "16.2"
   createIntermediateGroups: true
 settings:
   base:
@@ -25,14 +26,36 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
+        NSSupportsLiveActivities: true
         NSMicrophoneUsageDescription: Salvio записывает встречу, чтобы сделать транскрипт и итоги по вашему сценарию.
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
+    dependencies:
+      - target: SalvioWidgets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.salvio.app
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  SalvioWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - SalvioWidgets
+      - Salvio/Recording/RecordingAttributes.swift
+    info:
+      path: SalvioWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Salvio
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.salvio.app.widgets
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
   SalvioTests:
     type: bundle.unit-test
     platform: iOS

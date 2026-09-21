@@ -35,7 +35,10 @@ final class Uploader: NSObject, ObservableObject, URLSessionDataDelegate {
     func activate(activeRecordingId: String?) {
         store.recoverInterrupted(activeId: activeRecordingId)
         monitor.pathUpdateHandler = { [weak self] path in
-            guard path.status == .satisfied else { return }
+            guard path.status == .satisfied else {
+                appLog("net", "сети нет, загрузка ждёт")
+                return
+            }
             DispatchQueue.main.async { self?.kick() }
         }
         monitor.start(queue: .main)
@@ -46,6 +49,7 @@ final class Uploader: NSObject, ObservableObject, URLSessionDataDelegate {
                     self.inFlight[key.id, default: []].insert(key.index)
                 }
                 self.restored = true
+                appLog("up", "запуск: незавершённых записей \(self.store.all().count), задач в фоне \(tasks.count)")
                 self.kick()
             }
         }
@@ -87,8 +91,10 @@ final class Uploader: NSObject, ObservableObject, URLSessionDataDelegate {
                 let response: StartCallResponse = try await APIClient.shared.send("POST", "mobile/calls/start",
                     body: .form([("title", rec.title), ("duration_seconds", "0"), ("started_at", iso)]))
                 self.store.update(rec.id) { $0.serverId = response.id; $0.uploaded = [] }
+                appLog("up", "встреча заведена на сервере: \(response.id)")
                 self.succeeded()
             } catch {
+                appLog("up", "не удалось завести встречу: \((error as? APIError)?.message ?? error.localizedDescription)")
                 self.scheduleRetry()
             }
         }
@@ -102,6 +108,7 @@ final class Uploader: NSObject, ObservableObject, URLSessionDataDelegate {
             try RecordingStore.writeMultipart(chunk: store.chunkURL(rec.id, index), index: index, boundary: boundary, to: bodyURL)
         } catch {
             // ponytail: пропавший с диска чанк не чиним, запись повиснет в «Ожидает отправки»; при жалобах добавить сброс записи.
+            appLog("up", "чанк \(index) не читается с диска")
             scheduleRetry()
             return
         }
@@ -111,6 +118,7 @@ final class Uploader: NSObject, ObservableObject, URLSessionDataDelegate {
         task.taskDescription = "\(rec.id)|\(serverId)|\(index)"
         inFlight[rec.id, default: []].insert(index)
         task.resume()
+        appLog("up", "отправляем чанк \(index)")
     }
 
     private func finish(_ rec: Recording) {
@@ -120,8 +128,10 @@ final class Uploader: NSObject, ObservableObject, URLSessionDataDelegate {
             do {
                 let _: StatusResponse = try await APIClient.shared.send("POST", "mobile/calls/\(serverId)/finish",
                     body: .form([("total_chunks", "\(rec.chunkCount)"), ("duration_seconds", "\(Int(rec.recordedSeconds.rounded()))")]))
+                appLog("up", "запись закрыта на сервере, чанков \(rec.chunkCount)")
                 self.complete(rec.id)
             } catch let error as APIError {
+                appLog("up", "finish не прошёл: \(error.code ?? "") \(error.message)")
                 switch UploadFailure(error) {
                 case .callLost:
                     self.store.update(rec.id) { $0.resetServerCall() }
@@ -210,6 +220,7 @@ final class Uploader: NSObject, ObservableObject, URLSessionDataDelegate {
             store.update(key.id) { $0.uploaded.insert(key.index) }
             return succeeded()
         }
+        appLog("up", "чанк \(key.index) отклонён, код \(status)\(error.map { ", " + $0.localizedDescription } ?? "")")
         switch UploadFailure(APIError.parse(status: status, data: data)) {
         case .unauthorized:
             runInBackground {

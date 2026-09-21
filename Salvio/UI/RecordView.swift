@@ -11,8 +11,11 @@ struct RecordView: View {
                 Spacer()
                 Text(Format.duration(recorder.elapsed))
                     .font(.system(size: 56, weight: .light, design: .monospaced))
+                    .foregroundColor(recorder.isRecording ? .primary : .secondary)
                     .accessibilityLabel("Длительность записи \(Format.duration(recorder.elapsed))")
-                Text(statusText).foregroundColor(.secondary)
+                Text(statusText)
+                    .foregroundColor(recorder.isCapturing || !recorder.isRecording ? .secondary : .orange)
+                    .multilineTextAlignment(.center)
 
                 Button {
                     if recorder.isRecording { recorder.stop() } else { Task { await recorder.start() } }
@@ -25,8 +28,15 @@ struct RecordView: View {
                 }
                 .accessibilityLabel(recorder.isRecording ? "Остановить запись" : "Начать запись")
 
-                if recorder.isInterrupted {
-                    Button("Продолжить") { recorder.resume() }.buttonStyle(.borderedProminent)
+                if recorder.isRecording {
+                    Button {
+                        if recorder.isCapturing { recorder.pause() } else { recorder.resume() }
+                    } label: {
+                        Label(recorder.isCapturing ? "Пауза" : "Продолжить",
+                              systemImage: recorder.isCapturing ? "pause.fill" : "play.fill")
+                            .frame(minWidth: 160)
+                    }
+                    .buttonStyle(.bordered)
                 }
                 if let message = recorder.errorMessage {
                     Text(message).foregroundColor(.red).multilineTextAlignment(.center)
@@ -41,8 +51,9 @@ struct RecordView: View {
 
     private var statusText: String {
         guard recorder.isRecording else { return "Нажмите, чтобы начать запись" }
-        if recorder.isInterrupted { return "Запись на паузе: микрофон занят" }
-        return "Идет запись... Экран можно выключить, запись продолжится"
+        if recorder.isPausedByUser { return "Пауза. Запись сохранится целиком" }
+        if recorder.isInterrupted { return "Микрофон занят, ждём и продолжим сами" }
+        return "Идёт запись. Экран можно выключить, запись продолжится"
     }
 
     private var header: some View {
