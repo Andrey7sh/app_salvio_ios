@@ -56,6 +56,15 @@ final class APIParsingTests: XCTestCase {
         XCTAssertEqual(r.sections.map(\.text), ["Договорились", "• Отчёт\n• Звонок", "Анна: 2\nИван: отчёт"])
     }
 
+    /// Упавшая генерация: без текста сбоя экран показывал бы «ещё не сформированы» вечно.
+    func testResultCarriesSummaryError() throws {
+        let r = try decode(CallResult.self, """
+        {"scenario":null,"sections":[],"status":"done","ready":false,"error":"Саммари не получено"}
+        """)
+        XCTAssertFalse(r.ready)
+        XCTAssertEqual(r.error, "Саммари не получено")
+    }
+
     func testChecklistVerdicts() throws {
         let c = try decode(ChecklistResponse.self, """
         {"checklist":{"checklist_name":"Продажи","score_average":7.5,"categories":[

@@ -70,6 +70,8 @@ struct CallResult: Decodable {
     let sections: [ResultSection]
     let ready: Bool
     let status: String?
+    // Текст сбоя генерации: без него «не готово» и «упало» выглядят одинаково.
+    let error: String?
 }
 
 struct ResultSection: Decodable {
