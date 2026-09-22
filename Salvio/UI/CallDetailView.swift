@@ -156,7 +156,7 @@ struct CallDetailView: View {
         }
         let sections = (model.result?.sections ?? []).filter { !$0.text.isEmpty }
         if sections.isEmpty {
-            Text("Итоги ещё не сформированы").foregroundColor(.secondary)
+            Text(model.result?.error ?? "Итоги ещё не сформированы").foregroundColor(.secondary)
         }
         ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
             GroupBox(section.title ?? "") {
