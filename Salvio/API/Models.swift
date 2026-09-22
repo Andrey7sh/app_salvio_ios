@@ -82,6 +82,20 @@ struct ResultSection: Decodable {
     var text: String { value?.plainText.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
 }
 
+// Рекомендации тренера (GET /calls/{id}/recommendations), как в Android.
+struct RecommendationsResponse: Decodable {
+    let recommendations: RecommendationsData?
+}
+
+struct RecommendationsData: Decodable {
+    let tips: [RecommendationTip]?
+}
+
+struct RecommendationTip: Decodable {
+    let title: String?
+    let description: String?
+}
+
 struct ChecklistResponse: Decodable {
     let checklist: Checklist?
 }

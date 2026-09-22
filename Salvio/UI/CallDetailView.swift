@@ -8,6 +8,7 @@ final class CallDetailModel: ObservableObject {
     @Published private(set) var detail: CallDetail?
     @Published private(set) var result: CallResult?
     @Published private(set) var checklist: Checklist?
+    @Published private(set) var recommendations: [RecommendationTip] = []
     @Published private(set) var transcript: [TranscriptSegment] = []
     @Published private(set) var shareURL: URL?
     @Published private(set) var sharing = false
@@ -33,10 +34,12 @@ final class CallDetailModel: ObservableObject {
         guard status == "done" else { return }
         async let result = get("calls/\(id)/result", as: CallResult.self)
         async let checklist = get("calls/\(id)/checklist", as: ChecklistResponse.self)
+        async let recommendations = get("calls/\(id)/recommendations", as: RecommendationsResponse.self)
         async let transcript = get("calls/\(id)/transcript", as: Transcript.self)
         async let share = get("calls/\(id)/share", as: ShareLookup.self)
         self.result = await result
         self.checklist = await checklist?.checklist
+        self.recommendations = await recommendations?.recommendations?.tips ?? []
         self.transcript = await transcript?.segments ?? []
         if let url = await share?.share?.url { shareURL = URL(string: url) }
     }
@@ -164,6 +167,21 @@ struct CallDetailView: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+        GroupBox("Рекомендации тренера") {
+            VStack(alignment: .leading, spacing: 12) {
+                if model.recommendations.isEmpty {
+                    Text("Сейчас тут пусто").foregroundColor(.secondary)
+                }
+                ForEach(Array(model.recommendations.enumerated()), id: \.offset) { _, tip in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tip.title ?? "").font(.subheadline.bold())
+                        Text(tip.description ?? "").textSelection(.enabled)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         if let checklist = model.checklist, !checklist.categories.isEmpty {
             ChecklistBlock(checklist: checklist)
