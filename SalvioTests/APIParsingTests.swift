@@ -65,6 +65,14 @@ final class APIParsingTests: XCTestCase {
         XCTAssertEqual(r.error, "Саммари не получено")
     }
 
+    func testRecommendationTips() throws {
+        let r = try decode(RecommendationsResponse.self, """
+        {"recommendations":{"tips":[{"title":"Задавайте вопросы","description":"Меньше монолога"}]}}
+        """)
+        XCTAssertEqual(r.recommendations?.tips?.first?.title, "Задавайте вопросы")
+        XCTAssertEqual(r.recommendations?.tips?.first?.description, "Меньше монолога")
+    }
+
     func testChecklistVerdicts() throws {
         let c = try decode(ChecklistResponse.self, """
         {"checklist":{"checklist_name":"Продажи","score_average":7.5,"categories":[
