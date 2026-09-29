@@ -7,6 +7,9 @@ on:
     paths-ignore: ["**.md"]
   workflow_dispatch:
 
+permissions:
+  contents: write  # публикация релиза с Salvio.ipa
+
 jobs:
   build-test:
     runs-on: macos-15
@@ -92,6 +95,24 @@ jobs:
           name: Salvio-xcode
           path: Salvio-xcode.zip
           retention-days: 14
+
+      - name: Publish release
+        # Сборка основной ветки уходит в релиз, и постоянная ссылка
+        # https://github.com/Andrey7sh/app_salvio_ios/releases/latest/download/Salvio.ipa
+        # всегда отдаёт последнюю версию. ponytail: ветка захардкожена, при переезде iOS в main поменять тут.
+        if: github.ref == 'refs/heads/feat/ios-recording-ux'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(grep -m1 'MARKETING_VERSION:' project.yml | sed 's/.*"\(.*\)".*/\1/')
+          NOTES=$(printf '%s\n\n%s\n\n%s\n\n%s' \
+            "Тестовая сборка для проверки на iPhone, собрана автоматически из коммита ${GITHUB_SHA::7}. Не для App Store." \
+            "**Salvio.ipa**: неподписанная сборка для Windows, ставится через Sideloadly, подпись вашим Apple ID. Прямая ссылка на последнюю версию: https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/Salvio.ipa" \
+            "**Salvio-xcode.zip**: проект для Mac, инструкция в УСТАНОВКА_НА_IPHONE.md." \
+            "Приложение, установленное бесплатным Apple ID, работает 7 дней, потом ставится заново.")
+          gh release create "v${VERSION}-b${GITHUB_RUN_NUMBER}" Salvio.ipa Salvio-xcode.zip \
+            --target "$GITHUB_SHA" --latest \
+            --title "Salvio iOS ${VERSION}, сборка ${GITHUB_RUN_NUMBER}" --notes "$NOTES"
 
       - name: Upload logs
         if: always()

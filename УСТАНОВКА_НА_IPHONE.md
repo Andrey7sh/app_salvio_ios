@@ -111,7 +111,8 @@ https://github.com/Andrey7sh/app_salvio_ios/actions, верхняя строка
    Пункт появляется после первой установки, так что к нему можно вернуться после шага 3 ниже.
 
 **Установка и обновление:**
-1. Скачайте **Salvio.ipa**: https://github.com/Andrey7sh/app_salvio_ios/releases/latest, раздел **Assets**.
+1. Скачайте **Salvio.ipa** по постоянной ссылке, она всегда отдаёт последнюю версию:
+   https://github.com/Andrey7sh/app_salvio_ios/releases/latest/download/Salvio.ipa
 2. Откройте Sideloadly, перетащите `Salvio.ipa` в окно, в поле Apple account введите свой Apple ID,
    нажмите **Start**, введите пароль и код подтверждения, если спросят. Ждите надпись `Done.`
 3. На iPhone: **Настройки → Основные → VPN и управление устройством**, выбрать свой Apple ID, **Доверять**.
