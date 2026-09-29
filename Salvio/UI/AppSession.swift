@@ -27,6 +27,7 @@ final class AppSession: ObservableObject {
         let pair: TokenPair = try await APIClient.shared.send("POST", "auth/login",
             body: .json(Input(email: AuthForm.normalize(email), password: password)), auth: false)
         signedIn(pair)
+        Analytics.track("login")
     }
 
     func register(name: String, email: String, password: String) async throws {
@@ -34,6 +35,7 @@ final class AppSession: ObservableObject {
         let pair: TokenPair = try await APIClient.shared.send("POST", "auth/register",
             body: .json(Input(email: AuthForm.normalize(email), password: password, full_name: name.trimmingCharacters(in: .whitespaces))), auth: false)
         signedIn(pair)
+        Analytics.track("register")
     }
 
     func refresh() async {

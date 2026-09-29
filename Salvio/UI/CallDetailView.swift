@@ -52,7 +52,7 @@ final class CallDetailModel: ObservableObject {
         do {
             let info: ShareLinkInfo = try await APIClient.shared.send("POST", "calls/\(id)/share", body: .json(Input(sections: ["summary"])))
             shareURL = info.url.flatMap(URL.init(string:))
-            if shareURL == nil { error = "Не удалось создать ссылку" }
+            if shareURL == nil { error = "Не удалось создать ссылку" } else { Analytics.track("share") }
         } catch {
             self.error = "Не удалось создать ссылку"
         }
@@ -114,6 +114,7 @@ struct CallDetailView: View {
         }
         .refreshable { await model.load() }
         .task {
+            Analytics.track("meeting_open")
             // Пока запись обрабатывается, опрашиваем раз в 10 секунд.
             repeat {
                 await model.load()

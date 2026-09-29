@@ -129,9 +129,11 @@ final class Uploader: NSObject, ObservableObject, URLSessionDataDelegate {
                 let _: StatusResponse = try await APIClient.shared.send("POST", "mobile/calls/\(serverId)/finish",
                     body: .form([("total_chunks", "\(rec.chunkCount)"), ("duration_seconds", "\(Int(rec.recordedSeconds.rounded()))")]))
                 appLog("up", "запись закрыта на сервере, чанков \(rec.chunkCount)")
+                Analytics.track("call_uploaded")
                 self.complete(rec.id)
             } catch let error as APIError {
                 appLog("up", "finish не прошёл: \(error.code ?? "") \(error.message)")
+                Analytics.track("upload_retry")
                 switch UploadFailure(error) {
                 case .callLost:
                     self.store.update(rec.id) { $0.resetServerCall() }
