@@ -78,6 +78,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
         RecordingActivityController.start(title: rec.title)
+        Analytics.track("record_start")
     }
 
     func stop() {
@@ -96,6 +97,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         RecordingActivityController.stop()
         log("rec", "стоп записи \(id), длительность \(Int(seconds)) с")
+        Analytics.track("record_stop")
         Uploader.shared.kick()
     }
 

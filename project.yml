@@ -13,6 +13,10 @@ settings:
     CODE_SIGN_STYLE: Automatic
     # Свой Team ID подставляется в Xcode (Signing & Capabilities), в git не храним.
     DEVELOPMENT_TEAM: ""
+packages:
+  AppMetrica:
+    url: https://github.com/appmetrica/appmetrica-sdk-ios
+    from: 6.7.0
 targets:
   Salvio:
     type: application
@@ -32,6 +36,10 @@ targets:
         ITSAppUsesNonExemptEncryption: false
     dependencies:
       - target: SalvioWidgets
+      - package: AppMetrica
+        product: AppMetricaCore
+      - package: AppMetrica
+        product: AppMetricaCrashes
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.salvio.app
