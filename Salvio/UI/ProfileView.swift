@@ -28,7 +28,11 @@ struct ProfileView: View {
                 }
                 Section {
                     LabeledContent("Профиль работы", value: session.user?.defaultScenario?.label ?? "не выбран")
-                    LabeledContent("На балансе", value: session.balance.map { "\($0.balanceMinutes) мин" } ?? "…")
+                    LabeledContent("Пространство", value: session.workspaces?.currentName ?? "…")
+                    LabeledContent("Личные минуты", value: session.workspaces.map { "\($0.personal.balanceMinutes) мин" } ?? "…")
+                    if let team = session.workspaces?.team, team.sharedWallet == true {
+                        LabeledContent("Минуты «\(team.name)»", value: "\(team.balanceMinutes) мин")
+                    }
                 } footer: {
                     Text("Профиль работы настраивается в веб-кабинете")
                 }

@@ -88,8 +88,9 @@ final class Uploader: NSObject, ObservableObject, URLSessionDataDelegate {
             defer { self.apiBusy.remove(rec.id) }
             do {
                 let iso = ISO8601DateFormatter().string(from: rec.startedAt)
-                let response: StartCallResponse = try await APIClient.shared.send("POST", "mobile/calls/start",
-                    body: .form([("title", rec.title), ("duration_seconds", "0"), ("started_at", iso)]))
+                var form = [("title", rec.title), ("duration_seconds", "0"), ("started_at", iso)]
+                if let workspace = rec.workspace { form.append(("workspace", workspace)) }
+                let response: StartCallResponse = try await APIClient.shared.send("POST", "mobile/calls/start", body: .form(form))
                 self.store.update(rec.id) { $0.serverId = response.id; $0.uploaded = [] }
                 appLog("up", "встреча заведена на сервере: \(response.id)")
                 self.succeeded()
