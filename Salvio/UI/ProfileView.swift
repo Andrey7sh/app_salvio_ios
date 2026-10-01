@@ -23,7 +23,7 @@ struct ProfileView: View {
                     LabeledContent("Имя", value: session.user?.fullName ?? "")
                     LabeledContent("E-mail", value: session.user?.email ?? "")
                     if session.user?.emailVerified == false {
-                        Text("Подтвердите почту по письму, чтобы получить 30 бесплатных минут").foregroundColor(.orange)
+                        VerifyEmailNotice()
                     }
                 }
                 Section {
