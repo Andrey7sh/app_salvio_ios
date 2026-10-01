@@ -44,6 +44,13 @@ final class AppSession: ObservableObject {
         await loadWorkspaces()
     }
 
+    /// Повторное письмо подтверждения почты. Почта уже подтверждена: обновляем пользователя, напоминание пропадёт.
+    func resendVerifyEmail() async throws {
+        struct Result: Decodable { let alreadyVerified: Bool }
+        let r: Result = try await APIClient.shared.send("POST", "auth/verify-email/resend")
+        if r.alreadyVerified { await refresh() }
+    }
+
     func loadWorkspaces() async {
         if let ws: Workspaces = try? await APIClient.shared.send("GET", "workspaces") { workspaces = ws }
     }

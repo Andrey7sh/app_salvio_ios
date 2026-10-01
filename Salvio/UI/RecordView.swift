@@ -144,11 +144,43 @@ struct RecordView: View {
                 Text("Баланс минут: загружаем").foregroundColor(.secondary)
             }
             if session.user?.emailVerified == false {
-                Text("Подтвердите почту по письму, чтобы получить 30 бесплатных минут").font(.footnote).foregroundColor(.orange)
+                VerifyEmailNotice().font(.footnote)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
+    }
+}
+
+/// Напоминание подтвердить почту с кнопкой повторной отправки. Из приложения почту не подтверждал никто,
+/// пока здесь была одна строка без действия. После отправки кнопка прячется, чтобы не слать пачку писем.
+struct VerifyEmailNotice: View {
+    @EnvironmentObject private var session: AppSession
+    @State private var sent = false
+    @State private var sending = false
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(sent ? "Письмо отправлено. Если его нет во «Входящих», проверьте «Спам»"
+                      : "Подтвердите почту по письму, чтобы получить 30 бесплатных минут")
+                .foregroundColor(.orange)
+            if !sent {
+                Button("Отправить письмо ещё раз") { resend() }.disabled(sending)
+            }
+            if let error {
+                Text(error).foregroundColor(.red)
+            }
+        }
+    }
+
+    private func resend() {
+        sending = true
+        Task {
+            do { try await session.resendVerifyEmail(); sent = true; error = nil }
+            catch { self.error = "Не удалось отправить письмо, попробуйте позже" }
+            sending = false
+        }
     }
 }
