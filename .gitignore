@@ -10,3 +10,6 @@ build/
 *.xcresult
 .DS_Store
 .env
+
+# Черновая сборка инфографики App Store
+AppStore/_исходники/out/
