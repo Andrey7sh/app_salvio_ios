@@ -30,7 +30,14 @@ private struct RootView: View {
     @EnvironmentObject private var session: AppSession
     @ObservedObject private var recorder = Recorder.shared
     @Environment(\.scenePhase) private var scenePhase
-    @State private var tab = 0
+    @State private var tab = RootView.startTab
+
+    private static var startTab: Int {
+        #if DEBUG
+        if DemoMode.isOn { return DemoMode.initialTab }
+        #endif
+        return 0
+    }
 
     var body: some View {
         Group {
@@ -52,6 +59,9 @@ private struct RootView: View {
             }
         }
         .animation(.default, value: recorder.isRecording)
+        #if DEBUG
+        .onAppear { if DemoMode.screen == "record" { recorder.startDemo() } }
+        #endif
         .onChange(of: scenePhase) { phase in
             guard phase == .active else { return }
             Uploader.shared.kick()

@@ -1,0 +1,65 @@
+name: App Store screenshots
+
+# Снимает настоящие экраны iPhone-версии для карточки App Store: debug-сборка с демо-данными
+# (Salvio/DemoMode.swift) на самом крупном доступном симуляторе Pro Max. Mac для этого не нужен.
+# Сырые снимки уходят в артефакт appstore-raw-screens, инфографика собирается из них
+# скриптом AppStore/_исходники/make.py.
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/ios-appstore-screens]
+    paths: ["Salvio/**", ".github/workflows/appstore-screens.yml"]
+
+jobs:
+  shots:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | grep -vi beta | sort -V | tail -1)"
+
+      - name: Generate project
+        run: brew install xcodegen && xcodegen generate
+
+      - name: Boot Pro Max simulator
+        # App Store требует снимки 6.9" (1320x2868): это iPhone 16/17 Pro Max.
+        run: |
+          read -r UDID NAME < <(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          c = [x for k, v in d.items() if "iOS" in k for x in v if x["name"].endswith("Pro Max")]
+          x = sorted(c, key=lambda x: x["name"])[-1]
+          print(x["udid"], x["name"])')
+          echo "Simulator: $NAME"
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl ui "$UDID" appearance dark
+          xcrun simctl status_bar "$UDID" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+            --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+
+      - name: Build debug app
+        run: |
+          set -o pipefail
+          xcodebuild build -project Salvio.xcodeproj -scheme Salvio -configuration Debug -sdk iphonesimulator \
+            -destination "id=$SIM_UDID" -derivedDataPath build CODE_SIGNING_ALLOWED=NO \
+            | grep -E "error:|\*\* BUILD (SUCCEEDED|FAILED)"
+
+      - name: Shoot screens
+        run: |
+          xcrun simctl install "$SIM_UDID" build/Build/Products/Debug-iphonesimulator/Salvio.app
+          mkdir -p shots
+          for s in meeting planning record lecture list; do
+            xcrun simctl launch --terminate-running-process "$SIM_UDID" io.salvio.app -demoScreen "$s"
+            sleep 10
+            xcrun simctl io "$SIM_UDID" screenshot "shots/$s.png"
+          done
+          sips -g pixelWidth -g pixelHeight shots/*.png
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appstore-raw-screens
+          path: shots
+          retention-days: 30

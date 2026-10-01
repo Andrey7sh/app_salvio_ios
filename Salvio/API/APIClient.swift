@@ -29,6 +29,9 @@ final class APIClient {
     }
 
     func raw(_ method: String, _ path: String, body: RequestBody? = nil, auth: Bool = true) async throws -> Data {
+        #if DEBUG
+        if let demo = DemoMode.response(path) { return demo }  // скриншоты App Store, см. DemoMode.swift
+        #endif
         var (data, status) = try await perform(method, path, body: body, auth: auth)
         if status == 401, auth, TokenStore.refresh != nil {
             try await refreshTokens()

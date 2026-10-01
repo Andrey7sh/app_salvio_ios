@@ -47,9 +47,18 @@ struct CallsListView: View {
     @EnvironmentObject private var session: AppSession
     @StateObject private var model = CallsModel()
     @ObservedObject private var uploader = Uploader.shared
+    @State private var path: [CallItem] = CallsListView.startPath
+
+    private static var startPath: [CallItem] {
+        #if DEBUG
+        return DemoMode.initialPath
+        #else
+        return []
+        #endif
+    }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 if !uploader.recordings.isEmpty {
                     Section("На телефоне") {

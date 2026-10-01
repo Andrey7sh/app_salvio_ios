@@ -16,6 +16,9 @@ final class AppSession: ObservableObject {
             UserDefaults.standard.set(true, forKey: "installed")
         }
         isLoggedIn = TokenStore.access != nil
+        #if DEBUG
+        if DemoMode.isOn { isLoggedIn = true }
+        #endif
         expiredObserver = NotificationCenter.default.addObserver(forName: APIClient.sessionExpired, object: nil, queue: .main) { [weak self] _ in
             // Записи не трогаем: после повторного входа того же пользователя они доотправятся.
             Task { @MainActor in self?.signedOut() }

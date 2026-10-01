@@ -26,7 +26,20 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var errorMessage: String?
 
     var isRecording: Bool { recordingId != nil }
-    var isCapturing: Bool { recorder != nil }
+    var isCapturing: Bool {
+        #if DEBUG
+        if DemoMode.isOn { return recordingId != nil }
+        #endif
+        return recorder != nil
+    }
+
+    #if DEBUG
+    /// Скриншот App Store «идёт запись»: состояние без микрофона и файлов.
+    func startDemo() {
+        recordingId = "demo"
+        elapsed = 47 * 60 + 23
+    }
+    #endif
 
     private var recorder: AVAudioRecorder?
     private var closedSeconds: TimeInterval = 0
