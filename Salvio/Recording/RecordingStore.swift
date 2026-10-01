@@ -15,12 +15,16 @@ struct Recording: Codable, Equatable, Identifiable {
     /// Пользователь остановил запись (или её восстановили после падения). Только тогда вызываем finish.
     var isFinished = false
     var uploaded: Set<Int> = []
+    /// personal / team: пространство, выбранное при нажатии «Запись». Уходит на сервер при заведении встречи,
+    /// даже если её отправили позже, без сети (ТЗ_пространства_и_балансы.md, правило 5). nil: решит сервер.
+    /// Опциональное поле: манифесты прошлых версий читаются без него.
+    var workspace: String?
 
-    static func new(now: Date = Date()) -> Recording {
+    static func new(now: Date = Date(), workspace: String? = nil) -> Recording {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ru_RU")
         f.dateFormat = "dd.MM.yyyy HH:mm"
-        return Recording(id: UUID().uuidString, title: "Встреча \(f.string(from: now))", startedAt: now)
+        return Recording(id: UUID().uuidString, title: "Встреча \(f.string(from: now))", startedAt: now, workspace: workspace)
     }
 
     enum Step: Equatable {

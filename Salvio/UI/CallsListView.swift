@@ -44,6 +44,7 @@ final class CallsModel: ObservableObject {
 }
 
 struct CallsListView: View {
+    @EnvironmentObject private var session: AppSession
     @StateObject private var model = CallsModel()
     @ObservedObject private var uploader = Uploader.shared
 
@@ -91,9 +92,11 @@ struct CallsListView: View {
                 uploader.kick()
                 await model.reload()
             }
-            .navigationTitle("Встречи")
+            // Список показывает текущее пространство. Сменили его здесь или в вебе: перечитываем.
+            .navigationTitle(session.workspaces.map { "Встречи · \($0.currentName)" } ?? "Встречи")
             .navigationDestination(for: CallItem.self) { CallDetailView(call: $0) }
-            .task { await model.reload() }
+            .task(id: session.workspaces?.current) { await model.reload() }
+            .task { await session.loadWorkspaces() }
             .onChange(of: uploader.completedCount) { _ in Task { await model.reload() } }
         }
     }

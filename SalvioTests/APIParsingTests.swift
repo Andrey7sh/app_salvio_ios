@@ -25,9 +25,32 @@ final class APIParsingTests: XCTestCase {
         XCTAssertNil(user.defaultScenario?.label)
     }
 
-    func testBalance() throws {
-        let b = try decode(Balance.self, #"{"account_id":"x","owner_type":"user","balance_seconds":1799,"balance_minutes":29,"low_balance":false}"#)
-        XCTAssertEqual(b, Balance(balanceMinutes: 29, lowBalance: false))
+    func testWorkspacesSoloTeamSpendsPersonal() throws {
+        let ws = try decode(Workspaces.self, """
+        {"current":"team","wallet":"personal","onboarded":true,"personal":{"name":"Личное пространство","balance_minutes":30},
+         "team":{"id":"c1","name":"Финблок","team_type":"finance","team_type_name":"Финансы","is_admin":true,
+                 "shared_wallet":false,"balance_minutes":0},"team_types":[]}
+        """)
+        XCTAssertTrue(ws.inTeam)
+        XCTAssertEqual(ws.currentName, "Финблок")
+        XCTAssertEqual(ws.minutes, 30)  // без сотрудников команда тратит личные минуты
+        XCTAssertNil(ws.other)  // предлагать второе пространство незачем, баланс один
+    }
+
+    func testWorkspacesSharedTeamOffersPersonalWhenTeamEmpty() throws {
+        let ws = try decode(Workspaces.self, """
+        {"current":"team","wallet":"team","personal":{"balance_minutes":20},
+         "team":{"name":"Финблок","shared_wallet":true,"balance_minutes":0}}
+        """)
+        XCTAssertEqual(ws.minutes, 0)
+        XCTAssertEqual(ws.other?.workspace, "personal")
+        XCTAssertEqual(ws.other?.minutes, 20)
+    }
+
+    func testRecordingManifestWithoutWorkspaceStillDecodes() throws {
+        let json = #"{"id":"r1","title":"Встреча","startedAt":0,"recordedSeconds":0,"chunkCount":1,"isFinished":true,"uploaded":[]}"#
+        let rec = try JSONDecoder().decode(Recording.self, from: Data(json.utf8))
+        XCTAssertNil(rec.workspace)  // записи прошлой версии доотправятся, пространство решит сервер
     }
 
     func testCallsListCamelCaseKeys() throws {

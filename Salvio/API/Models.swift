@@ -37,9 +37,37 @@ struct SectionSchema: Decodable, Equatable {
     let title: String?
 }
 
-struct Balance: Decodable, Equatable {
-    let balanceMinutes: Int
-    let lowBalance: Bool
+/// Текущее пространство и оба баланса (ТЗ_пространства_и_балансы.md). Переключатель общий с веб-кабинетом.
+/// team == nil: команды нет. team.sharedWallet == false: в команде пока один владелец, её записи тратят его личные минуты.
+struct Workspaces: Decodable, Equatable {
+    struct Personal: Decodable, Equatable { let balanceMinutes: Int }
+    struct Team: Decodable, Equatable {
+        let name: String
+        let sharedWallet: Bool?
+        let balanceMinutes: Int
+    }
+
+    static let personalKey = "personal"
+    static let teamKey = "team"
+
+    let current: String
+    /// Чей баланс тратят записи текущего пространства.
+    let wallet: String?
+    let personal: Personal
+    let team: Team?
+
+    var inTeam: Bool { current == Self.teamKey && team != nil }
+    var currentName: String { inTeam ? team?.name ?? "" : "Личное" }
+    var teamShared: Bool { team?.sharedWallet == true }
+    /// Минуты баланса, с которого спишется запись в текущем пространстве.
+    var minutes: Int { wallet == Self.teamKey ? team?.balanceMinutes ?? 0 : personal.balanceMinutes }
+    var low: Bool { minutes < 10 }
+
+    /// Второе пространство со своим балансом: куда предложить записать, если в текущем ноль.
+    var other: (workspace: String, name: String, minutes: Int)? {
+        guard let team, teamShared else { return nil }
+        return inTeam ? (Self.personalKey, "Личное", personal.balanceMinutes) : (Self.teamKey, team.name, team.balanceMinutes)
+    }
 }
 
 struct CallsPage: Decodable {

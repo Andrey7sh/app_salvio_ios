@@ -43,7 +43,8 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         nc.addObserver(self, selector: #selector(handleTerminate), name: UIApplication.willTerminateNotification, object: nil)
     }
 
-    func start() async {
+    /// workspace: куда закрепить запись (personal / team), nil: решит сервер по текущему пространству.
+    func start(workspace: String? = nil) async {
         guard !isRecording else { return }
         let granted = await withCheckedContinuation { cont in
             AVAudioSession.sharedInstance().requestRecordPermission { cont.resume(returning: $0) }
@@ -54,16 +55,16 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 errorMessage = "Нет разрешения на микрофон. Включите его в Настройках iPhone: Salvio → Микрофон."
                 return
             }
-            begin()
+            begin(workspace: workspace)
         }
     }
 
-    private func begin() {
+    private func begin(workspace: String?) {
         guard activateSession() else {
             errorMessage = "Не удалось начать запись"
             return
         }
-        let rec = Recording.new()
+        let rec = Recording.new(workspace: workspace)
         store.save(rec)
         recordingId = rec.id
         closedSeconds = 0

@@ -1,11 +1,11 @@
 import Foundation
 
-/// Пользователь, баланс минут и вход/выход.
+/// Пользователь, пространство с балансами минут и вход/выход.
 @MainActor
 final class AppSession: ObservableObject {
     @Published private(set) var isLoggedIn: Bool
     @Published private(set) var user: User?
-    @Published private(set) var balance: Balance?
+    @Published private(set) var workspaces: Workspaces?
 
     private var expiredObserver: NSObjectProtocol?
 
@@ -41,7 +41,31 @@ final class AppSession: ObservableObject {
     func refresh() async {
         guard isLoggedIn else { return }
         if let me: User = try? await APIClient.shared.send("GET", "auth/me") { user = me }
-        if let b: Balance = try? await APIClient.shared.send("GET", "billing/balance") { balance = b }
+        await loadWorkspaces()
+    }
+
+    func loadWorkspaces() async {
+        if let ws: Workspaces = try? await APIClient.shared.send("GET", "workspaces") { workspaces = ws }
+    }
+
+    /// Перед записью: пространство могли сменить в вебе. Ждём не дольше timeout, иначе остаётся последнее известное,
+    /// чтобы плохая сеть не задерживала старт записи.
+    func refreshWorkspaces(timeout: Double = 2) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.loadWorkspaces() }
+            group.addTask { try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
+    /// Смена пространства в телефоне меняет его и в веб-кабинете: переключатель один на аккаунт.
+    func switchWorkspace(_ workspace: String) async throws {
+        struct Input: Encodable { let workspace: String }
+        let ws: Workspaces = try await APIClient.shared.send("PUT", "workspaces/current", body: .json(Input(workspace: workspace)))
+        CallsCache.clear()  // в кэше записи прошлого пространства
+        workspaces = ws
+        Analytics.track("workspace_switch")
     }
 
     /// Выход по кнопке: неотправленные записи удаляются, под чужим токеном их слать нельзя.
@@ -83,7 +107,7 @@ final class AppSession: ObservableObject {
 
     private func signedOut() {
         user = nil
-        balance = nil
+        workspaces = nil
         isLoggedIn = false
     }
 }
