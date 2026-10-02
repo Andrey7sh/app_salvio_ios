@@ -7,8 +7,18 @@ struct RecordView: View {
     @State private var choosingSpace = false
     @State private var zeroWarning: (current: String, workspace: String, name: String, minutes: Int)?
     @State private var switchError: String?
+    // «Подтвержу позже»: до перезапуска приложения показываем обычную запись.
+    @State private var verifyLater = false
 
     var body: some View {
+        if session.user?.emailVerified == false && !verifyLater && !recorder.isRecording {
+            VerifyEmailGate { verifyLater = true }
+        } else {
+            recordScreen
+        }
+    }
+
+    private var recordScreen: some View {
         NavigationStack {
             VStack(spacing: 20) {
                 header
