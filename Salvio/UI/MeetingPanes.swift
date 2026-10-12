@@ -145,6 +145,12 @@ struct SpeakersSheet: View {
         return seen
     }
 
+    /// Пара первых фраз голоса, чтобы узнать, кто это.
+    private func sample(for key: String) -> String {
+        let phrases = model.transcript.filter { $0.speaker == key }.prefix(2).map { String(($0.text ?? "").prefix(80)) }
+        return "«" + phrases.joined(separator: " … ") + "»"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -157,19 +163,7 @@ struct SpeakersSheet: View {
                                       : "Имена появятся в транскрипте и в итогах.")
                 }
                 ForEach(speakers, id: \.self) { key in
-                    Section {
-                        TextField("Имя", text: Binding(get: { names[key] ?? "" }, set: { names[key] = String($0.prefix(80)) }))
-                        if !model.roleOptions.isEmpty {
-                            Picker("Роль", selection: Binding(get: { roles[key] ?? "" }, set: { roles[key] = $0.isEmpty ? nil : $0 })) {
-                                Text("Без роли").tag("")
-                                ForEach(model.roleOptions) { Text($0.title).tag($0.id) }
-                            }
-                        }
-                    } header: {
-                        Text("Голос \(key)")
-                    } footer: {
-                        Text("«" + model.transcript.filter { $0.speaker == key }.prefix(2).map { String(($0.text ?? "").prefix(80)) }.joined(separator: " … ") + "»")
-                    }
+                    SpeakerSection(key: key, sample: sample(for: key), options: model.roleOptions, names: $names, roles: $roles)
                 }
             }
             .navigationTitle("Спикеры")
@@ -191,6 +185,39 @@ struct SpeakersSheet: View {
             .onAppear { names = model.speakerNames; roles = model.speakerRoles }
             .onChange(of: model.speakerNames) { names = $0 }
             .onChange(of: model.speakerRoles) { roles = $0 }
+        }
+    }
+}
+
+/// Секция одного голоса. Отдельная вьюха: в одном теле окна компилятор не успевал вывести типы.
+private struct SpeakerSection: View {
+    let key: String
+    let sample: String
+    let options: [Preferences.SpeakerRole]
+    @Binding var names: [String: String]
+    @Binding var roles: [String: String]
+
+    private var name: Binding<String> {
+        Binding(get: { names[key] ?? "" }, set: { names[key] = String($0.prefix(80)) })
+    }
+
+    private var role: Binding<String> {
+        Binding(get: { roles[key] ?? "" }, set: { roles[key] = $0.isEmpty ? nil : $0 })
+    }
+
+    var body: some View {
+        Section {
+            TextField("Имя", text: name)
+            if !options.isEmpty {
+                Picker("Роль", selection: role) {
+                    Text("Без роли").tag("")
+                    ForEach(options) { option in Text(option.title).tag(option.id) }
+                }
+            }
+        } header: {
+            Text("Голос \(key)")
+        } footer: {
+            Text(sample)
         }
     }
 }
