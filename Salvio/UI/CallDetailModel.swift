@@ -27,6 +27,8 @@ final class CallDetailModel: ObservableObject {
     @Published private(set) var transcriptTotal: Int?
     @Published private(set) var transcriptLoading = false
     @Published private(set) var transcriptFailed = false
+    /// Растёт при сбросе транскрипта: ответ на страницу, запрошенную до сброса, отбрасывается.
+    private var transcriptGen = 0
     @Published private(set) var speakerNames: [String: String] = [:]
     @Published private(set) var speakerRoles: [String: String] = [:]
     @Published private(set) var roleOptions: [Preferences.SpeakerRole] = []
@@ -61,7 +63,8 @@ final class CallDetailModel: ObservableObject {
     func load() async {
         do {
             let d: CallDetail = try await APIClient.shared.send("GET", "calls/\(id)")
-            if d.audioUrl != detail?.audioUrl, let url = d.audioUrl.flatMap(URL.init(string:)) {
+            // Presigned-ссылка новая на каждый ответ: сравниваем путь, иначе обновление сбрасывало бы плеер.
+            if let url = d.audioUrl.flatMap(URL.init(string:)), player?.url.path != url.path {
                 player?.teardown()
                 player = PlayerModel(url: url, fallbackDuration: Double(d.durationSeconds ?? 0))
             }
@@ -81,7 +84,10 @@ final class CallDetailModel: ObservableObject {
         self.result = await result
         self.checklist = await checklist?.checklist
         self.recommendations = await recommendations?.recommendations?.tips ?? []
-        if let info = await share { shareURL = info?.url.flatMap(URL.init(string:)); shareSections = info?.sections ?? [] }
+        // try? схлопывает Optional: сбой сети и «ссылки нет» выглядят одинаково, ссылка просто не показывается.
+        let info = await share
+        shareURL = info?.url.flatMap(URL.init(string:))
+        shareSections = info?.sections ?? []
         if let list = await summaries { self.summaries = list }
         // Транскрипт мог устареть (новые имена, повторное распознавание): сбрасываем, грузим при открытой вкладке.
         resetTranscript()
@@ -101,21 +107,22 @@ final class CallDetailModel: ObservableObject {
 
     func loadTranscriptPage() async {
         guard !transcriptLoading, !transcriptComplete else { return }
+        let gen = transcriptGen
         transcriptLoading = true
         transcriptFailed = false
         let offset = transcript.count
-        defer { transcriptLoading = false }
+        defer { if gen == transcriptGen { transcriptLoading = false } }
         do {
             let page = try await MeetingAPI.transcript(id, offset: offset)
             // Сброс или параллельная догрузка за время запроса: ответ устарел.
-            guard offset == transcript.count else { return }
+            guard gen == transcriptGen, offset == transcript.count else { return }
             transcript += page.segments
             // Без total (старый бэкенд, 202 на обработке) считаем, что больше нет.
             transcriptTotal = page.total ?? transcript.count
             speakerNames = page.speakerNames
             speakerRoles = page.speakerRoles
         } catch {
-            transcriptFailed = true
+            if gen == transcriptGen { transcriptFailed = true }
         }
         if roleOptions.isEmpty, let prefs = try? await MeetingAPI.preferences() {
             roleOptions = prefs.speakerRoles ?? []
@@ -132,6 +139,8 @@ final class CallDetailModel: ObservableObject {
     }
 
     private func resetTranscript() {
+        transcriptGen += 1
+        transcriptLoading = false
         transcript = []
         transcriptTotal = nil
         transcriptFailed = false
@@ -153,11 +162,9 @@ final class CallDetailModel: ObservableObject {
             try await MeetingAPI.saveSpeakers(id, names: clean, roles: roles)
             Analytics.track("speakers_saved")
             resetTranscript()
-            if isDone {
-                await restart(retranscribe: false, notice: "Итоги обновляются с новыми именами")
-            } else {
-                await loadTranscriptPage()
-            }
+            if isDone { await restart(retranscribe: false, notice: "Итоги обновляются с новыми именами") }
+            // Новые имена сразу; если перезапуск отклонили (402 на частично оплаченной записи), транскрипт не пропадает.
+            await loadTranscriptPage()
         } catch {
             notice = error.localizedDescription
         }
@@ -228,7 +235,7 @@ final class CallDetailModel: ObservableObject {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !chatSending else { return }
         // Вопрос показываем сразу: ответ генерируется до минуты.
-        let pending = ChatMessage(id: "pending", role: "user", content: q)
+        let pending = ChatMessage(id: "pending-" + UUID().uuidString, role: "user", content: q)
         chat.append(pending)
         chatSending = true
         defer { chatSending = false }
@@ -238,7 +245,7 @@ final class CallDetailModel: ObservableObject {
             Analytics.track("chat_ask")
         } catch {
             // Вопрос без ответа убираем, иначе он висит в ленте как заданный.
-            chat.removeAll { $0.id == "pending" }
+            chat.removeAll { $0.id == pending.id }
             notice = error.localizedDescription
         }
     }
@@ -261,7 +268,8 @@ final class CallDetailModel: ObservableObject {
             let tab = try await MeetingAPI.addSummary(id, scenarioId: scenarioId)
             summaries.append(tab)
             selectedSummaryId = tab.id
-            while !Task.isCancelled, summaries.contains(where: { $0.pending }) {
+            // Не дольше трёх минут: зависшая очередь не должна опрашивать сервер вечно.
+            for _ in 0..<36 where !Task.isCancelled && summaries.contains(where: { $0.pending }) {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 summaries = (try? await MeetingAPI.summaries(id)) ?? summaries
             }

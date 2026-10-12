@@ -32,6 +32,16 @@ struct RecordingSettingsSection: View {
                 LabeledContent("Шаблон по умолчанию", value: session.user?.defaultScenario?.label ?? "не выбран")
             }
             .foregroundColor(.primary)
+            // Модификаторы на Section размножаются по строкам: загрузка и лист висят на первой строке.
+            .task { await model.load() }
+            .sheet(isPresented: $pickingScenario) {
+                ScenarioPickerView(title: "Шаблон по умолчанию") { scenario in
+                    Task {
+                        do { try await session.setDefaultScenario(scenario.id) }
+                        catch { model.error = error.localizedDescription }
+                    }
+                }
+            }
             if let prefs = model.prefs {
                 let languages = prefs.options?.languages ?? [:]
                 Picker("Язык распознавания", selection: Binding(
@@ -65,15 +75,6 @@ struct RecordingSettingsSection: View {
             Text("Настройки записи")
         } footer: {
             Text("Общие с веб-кабинетом. Язык и словарь действуют на новые записи.")
-        }
-        .task { await model.load() }
-        .sheet(isPresented: $pickingScenario) {
-            ScenarioPickerView(title: "Шаблон по умолчанию") { scenario in
-                Task {
-                    do { try await session.setDefaultScenario(scenario.id) }
-                    catch { model.error = error.localizedDescription }
-                }
-            }
         }
     }
 

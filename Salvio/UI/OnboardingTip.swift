@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Подсказки при первом входе, как в Android 1.4.6: по одной за раз в порядке экрана, показанная больше не появляется.
+/// Тур при первом входе, как в Android 1.4.7: popover стрелкой указывает на элемент, «Далее» ведёт к следующему
+/// шагу на этом экране, крестик закрывает весь тур экрана. Пройденное больше не появляется.
 /// Своя реализация на popover: TipKit только с iOS 17, а приложение поддерживает 16.2.
 /// ponytail: флаги в UserDefaults на устройстве, после переустановки покажутся снова; на сервер, если понадобится синхронно с вебом.
 enum Tip: String, CaseIterable {
@@ -61,7 +62,14 @@ final class TipStore: ObservableObject {
         guard !seen.contains(tip.rawValue) else { return }
         seen.insert(tip.rawValue)
         UserDefaults.standard.set(Array(seen), forKey: Self.key)
-        Analytics.track("onboarding_tip_\(tip.rawValue)")
+        Analytics.track("onboarding_step_\(tip.rawValue)")
+    }
+
+    /// Крестик: остальные шаги этого экрана тоже не показываем.
+    func skipScreen(of tip: Tip) {
+        for t in Tip.allCases where t.screen == tip.screen { seen.insert(t.rawValue) }
+        UserDefaults.standard.set(Array(seen), forKey: Self.key)
+        Analytics.track("onboarding_skip_\(tip.rawValue)")
     }
 }
 
@@ -71,6 +79,7 @@ struct OnboardingTip<Content: View>: View {
     let content: Content
     @ObservedObject private var store = TipStore.shared
     @State private var presented = false
+    @State private var skipped = false
 
     init(_ tip: Tip, enabled: Bool = true, @ViewBuilder content: () -> Content) {
         self.tip = tip
@@ -83,10 +92,23 @@ struct OnboardingTip<Content: View>: View {
     var body: some View {
         content
             .popover(isPresented: $presented) {
+                let steps = Tip.allCases.filter { $0.screen == tip.screen }
+                let index = steps.firstIndex(of: tip) ?? 0
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(tip.title).font(.headline)
+                    HStack {
+                        Text(tip.title).font(.headline)
+                        Spacer()
+                        Button { skipped = true; presented = false } label: { Image(systemName: "xmark") }
+                            .accessibilityLabel("Закрыть подсказки")
+                    }
                     Text(tip.text).fixedSize(horizontal: false, vertical: true)
-                    Button("Понятно") { presented = false }.padding(.top, 4)
+                    HStack {
+                        Text("\(index + 1) из \(steps.count)").font(.footnote).foregroundColor(.secondary)
+                        Spacer()
+                        Button(index + 1 == steps.count ? "Готово" : "Далее") { presented = false }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    .padding(.top, 4)
                 }
                 .padding()
                 .frame(idealWidth: 300)
@@ -98,8 +120,11 @@ struct OnboardingTip<Content: View>: View {
                 try? await Task.sleep(nanoseconds: 700_000_000)
                 if !Task.isCancelled { presented = true }
             }
-            // Закрыли «Понятно» или тапом мимо: подсказка увидена, следующая на этом экране получает очередь.
-            .onChange(of: presented) { shown in if !shown { store.markSeen(tip) } }
+            // «Далее» или тап мимо: шаг пройден, следующий на этом экране получает очередь. Крестик гасит весь экран.
+            .onChange(of: presented) { shown in
+                guard !shown else { return }
+                if skipped { store.skipScreen(of: tip) } else { store.markSeen(tip) }
+            }
     }
 }
 

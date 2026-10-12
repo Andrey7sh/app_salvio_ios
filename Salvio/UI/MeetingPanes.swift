@@ -212,7 +212,7 @@ struct ChatPane: View {
                         .padding(12)
                         .background(RoundedRectangle(cornerRadius: 12)
                             .fill(mine ? Color.accentColor.opacity(0.2) : Color(.secondarySystemBackground)))
-                    if !mine, message.id != "pending" {
+                    if !mine, !message.id.hasPrefix("pending") {
                         Button("Сохранить в итоги") { Task { await model.saveAnswer(message.id) } }.font(.footnote)
                     }
                 }

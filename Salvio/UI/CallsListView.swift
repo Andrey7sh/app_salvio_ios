@@ -20,6 +20,10 @@ final class CallsModel: ObservableObject {
     private var totalPages = 1
     private var loading = false
     private var generation = 0
+    /// Пространство, для которого показан список: .task перезапускается при возврате с экрана встречи,
+    /// а папку и поиск при этом сбрасывать нельзя.
+    private var shownWorkspace: String?? = nil
+    private var lastQuery = ""
 
     var filtered: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty || folder != nil }
     var inTrash: Bool { folder == Self.trash }
@@ -74,6 +78,22 @@ final class CallsModel: ObservableObject {
 
     func loadFolders() async {
         if let f = try? await MeetingAPI.folders() { folders = f }
+    }
+
+    func enter(workspace: String?) async {
+        guard shownWorkspace != .some(workspace) else { return }
+        shownWorkspace = .some(workspace)
+        // Папки у каждого пространства свои: выбранная в прошлом пространстве здесь не существует.
+        await open(folder: nil)
+        await loadFolders()
+    }
+
+    /// Поиск после паузы в наборе; тот же текст повторно список не перечитывает.
+    func search() async {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard q != lastQuery else { return }
+        lastQuery = q
+        await reload()
     }
 
     func open(folder: String?) async {
@@ -167,7 +187,7 @@ struct CallsListView: View {
             // Ждём паузу в наборе, чтобы не дёргать сервер на каждую букву.
             .task(id: model.query) {
                 try? await Task.sleep(nanoseconds: 400_000_000)
-                if !Task.isCancelled, model.loaded { await model.reload() }
+                if !Task.isCancelled, model.loaded { await model.search() }
             }
             .refreshable {
                 uploader.kick()
@@ -178,11 +198,7 @@ struct CallsListView: View {
             .navigationTitle(model.folderTitle ?? session.workspaces.map { "Встречи · \($0.currentName)" } ?? "Встречи")
             .navigationDestination(for: CallItem.self) { CallDetailView(call: $0) }
             .toolbar { ToolbarItem(placement: .primaryAction) { foldersMenu } }
-            .task(id: session.workspaces?.current) {
-                // Папки у каждого пространства свои: выбранная в прошлом пространстве здесь не существует.
-                await model.open(folder: nil)
-                await model.loadFolders()
-            }
+            .task(id: session.workspaces?.current) { await model.enter(workspace: session.workspaces?.current) }
             .task { await session.loadWorkspaces() }
             // Вернулись с экрана встречи: её могли удалить, перенести или переименовать.
             .onAppear { if model.loaded { Task { await model.loadFolders(); await model.reload() } } }

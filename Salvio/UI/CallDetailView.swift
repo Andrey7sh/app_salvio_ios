@@ -73,9 +73,12 @@ struct CallDetailView: View {
         }
         .confirmationDialog("Скачать файлом", isPresented: $choosingExport, titleVisibility: .visible) {
             // Форматы как в веб-кабинете (salvio-web services/export.py). PDF там это печать html, на телефоне не нужен.
-            Button("Итоги · Word") { export("summary", "docx") }
-            Button("Итоги · текст") { export("summary", "txt") }
-            Button("Итоги · Markdown") { export("summary", "md") }
+            // У старых записей без строки итогов сервер отвечает 404: не предлагаем то, чего нет.
+            if model.selectedSummary != nil || model.summaries.contains(where: { $0.isPrimary == true }) {
+                Button("Итоги · Word") { export("summary", "docx") }
+                Button("Итоги · текст") { export("summary", "txt") }
+                Button("Итоги · Markdown") { export("summary", "md") }
+            }
             Button("Транскрипт · Word") { export("transcript", "docx") }
             Button("Транскрипт · текст") { export("transcript", "txt") }
             Button("Транскрипт · субтитры SRT") { export("transcript", "srt") }
@@ -196,7 +199,8 @@ struct CallDetailView: View {
                             Label("Пересобрать итоги", systemImage: "arrow.clockwise")
                         }
                     }
-                    if model.isDone || model.status == "error" {
+                    // Запись без речи сервер распознавать заново не даёт (400 no_speech).
+                    if model.isDone || (model.status == "error" && model.detail?.errorCode != "no_speech") {
                         Button { Task { await model.restart(retranscribe: true) } } label: {
                             Label("Распознать заново", systemImage: "waveform")
                         }

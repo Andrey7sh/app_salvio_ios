@@ -108,7 +108,7 @@ final class APIParsingTests: XCTestCase {
     }
 
     func testTranscriptPlaceholder202() throws {
-        let t = try JSONDecoder.plain.decode(TranscriptPage.self, Data(#"{"segments":[],"transcript_text":"","status":"transcribing"}"#.utf8))
+        let t = try JSONDecoder.plain.decode(TranscriptPage.self, from: Data(#"{"segments":[],"transcript_text":"","status":"transcribing"}"#.utf8))
         XCTAssertTrue(t.segments.isEmpty)
         XCTAssertNil(t.total)  // без total приложение считает транскрипт загруженным
     }
