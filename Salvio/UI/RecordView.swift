@@ -7,6 +7,8 @@ struct RecordView: View {
     @State private var choosingSpace = false
     @State private var zeroWarning: (current: String, workspace: String, name: String, minutes: Int)?
     @State private var switchError: String?
+    @State private var pickingScenario = false
+    @State private var scenarioError: String?
     // «Подтвержу позже»: до перезапуска приложения показываем обычную запись.
     @State private var verifyLater = false
 
@@ -31,22 +33,24 @@ struct RecordView: View {
                     .foregroundColor(recorder.isCapturing || !recorder.isRecording ? .secondary : .orange)
                     .multilineTextAlignment(.center)
 
-                Button {
-                    if recorder.isRecording {
-                        recorder.stop()
-                    } else if RecordingConsent.granted {
-                        Task { await prepareAndStart() }
-                    } else {
-                        askConsent = true
+                OnboardingTip(.recordStart, enabled: !recorder.isRecording) {
+                    Button {
+                        if recorder.isRecording {
+                            recorder.stop()
+                        } else if RecordingConsent.granted {
+                            Task { await prepareAndStart() }
+                        } else {
+                            askConsent = true
+                        }
+                    } label: {
+                        Image(systemName: recorder.isRecording ? "stop.fill" : "mic.fill")
+                            .font(.system(size: 44))
+                            .foregroundColor(.white)
+                            .frame(width: 120, height: 120)
+                            .background(Circle().fill(recorder.isRecording ? Color.red : Color.accentColor))
                     }
-                } label: {
-                    Image(systemName: recorder.isRecording ? "stop.fill" : "mic.fill")
-                        .font(.system(size: 44))
-                        .foregroundColor(.white)
-                        .frame(width: 120, height: 120)
-                        .background(Circle().fill(recorder.isRecording ? Color.red : Color.accentColor))
+                    .accessibilityLabel(recorder.isRecording ? "Остановить запись" : "Начать запись")
                 }
-                .accessibilityLabel(recorder.isRecording ? "Остановить запись" : "Начать запись")
 
                 if recorder.isRecording {
                     Button {
@@ -66,6 +70,14 @@ struct RecordView: View {
             .padding()
             .navigationTitle("Запись")
             .task { await session.refresh() }
+            .sheet(isPresented: $pickingScenario) {
+                ScenarioPickerView(title: "Шаблон по умолчанию") { scenario in
+                    Task {
+                        do { try await session.setDefaultScenario(scenario.id); scenarioError = nil }
+                        catch { scenarioError = error.localizedDescription }
+                    }
+                }
+            }
             .sheet(isPresented: $askConsent) {
                 ConsentView { Task { await prepareAndStart() } }
             }
@@ -119,8 +131,18 @@ struct RecordView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Профиль работы: \(session.user?.defaultScenario?.label ?? "не выбран")").font(.headline)
-            Text("Профиль меняется в веб-кабинете").font(.footnote).foregroundColor(.secondary)
+            HStack {
+                Text("Шаблон по умолчанию: \(session.user?.defaultScenario?.label ?? "не выбран")").font(.headline)
+                if !recorder.isRecording {
+                    OnboardingTip(.recordTemplate) {
+                        Button(session.user?.defaultScenario == nil ? "Выбрать" : "Сменить") { pickingScenario = true }
+                            .font(.subheadline)
+                    }
+                }
+            }
+            if let scenarioError {
+                Text(scenarioError).font(.footnote).foregroundColor(.red)
+            }
             if let ws = session.workspaces {
                 HStack {
                     Text("Пространство: \(ws.inTeam ? "👥" : "👤") \(ws.currentName)")

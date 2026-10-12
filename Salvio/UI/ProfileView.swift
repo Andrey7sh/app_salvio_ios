@@ -26,15 +26,13 @@ struct ProfileView: View {
                         VerifyEmailNotice()
                     }
                 }
+                RecordingSettingsSection()
                 Section {
-                    LabeledContent("Профиль работы", value: session.user?.defaultScenario?.label ?? "не выбран")
                     LabeledContent("Пространство", value: session.workspaces?.currentName ?? "…")
                     LabeledContent("Личные минуты", value: session.workspaces.map { "\($0.personal.balanceMinutes) мин" } ?? "…")
                     if let team = session.workspaces?.team, team.sharedWallet == true {
                         LabeledContent("Минуты «\(team.name)»", value: "\(team.balanceMinutes) мин")
                     }
-                } footer: {
-                    Text("Профиль работы настраивается в веб-кабинете")
                 }
                 Section {
                     Toggle("Согласие на запись и обработку", isOn: Binding(
@@ -46,7 +44,7 @@ struct ProfileView: View {
                     ))
                     .disabled(recorder.isRecording)
                 } footer: {
-                    Text("Без согласия новые записи не создаются. Уже загруженные встречи остаются в аккаунте, их можно удалить в веб-кабинете.")
+                    Text("Без согласия новые записи не создаются. Уже загруженные встречи остаются в аккаунте, их можно удалить на экране встречи.")
                 }
                 Section {
                     Link("Пользовательское соглашение", destination: URL(string: "https://salvio.io/mob_terms")!)
