@@ -82,6 +82,8 @@ struct CallItem: Codable, Identifiable, Hashable {
     let startedAt: String?
     let durationSeconds: Int?
     let status: String?
+    /// no_speech: в записи не слышно речи, минуты возвращены (status при этом error).
+    var errorCode: String? = nil
 }
 
 struct CallDetail: Decodable {
@@ -91,6 +93,7 @@ struct CallDetail: Decodable {
     let startedAt: String?
     let durationSeconds: Int?
     let audioUrl: String?
+    var errorCode: String? = nil
 }
 
 struct CallResult: Decodable {
@@ -153,20 +156,10 @@ struct ChecklistItem: Decodable {
     }
 }
 
-struct Transcript: Decodable {
-    let segments: [TranscriptSegment]
-    let transcriptText: String?
-}
-
-struct TranscriptSegment: Decodable {
-    let startMs: Int?
-    let speakerLabel: String?
-    let text: String?
-}
-
 struct ShareLinkInfo: Decodable {
     let url: String?
     let token: String?
+    var sections: [String]? = nil
 }
 
 struct ShareLookup: Decodable {
@@ -261,4 +254,8 @@ extension JSONDecoder {
         d.keyDecodingStrategy = .convertFromSnakeCase
         return d
     }()
+
+    /// Без перевода ключей: convertFromSnakeCase переводит и ключи словарей (коды отраслей, метки спикеров),
+    /// и при сохранении назад на сервер они ушли бы испорченными. Модели с ним объявляют CodingKeys сами.
+    static let plain = JSONDecoder()
 }

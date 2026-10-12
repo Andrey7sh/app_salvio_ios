@@ -1,83 +1,22 @@
-import AVFoundation
 import SwiftUI
-
-@MainActor
-final class CallDetailModel: ObservableObject {
-    let id: String
-    @Published var title: String
-    @Published private(set) var detail: CallDetail?
-    @Published private(set) var result: CallResult?
-    @Published private(set) var checklist: Checklist?
-    @Published private(set) var recommendations: [RecommendationTip] = []
-    @Published private(set) var transcript: [TranscriptSegment] = []
-    @Published private(set) var shareURL: URL?
-    @Published private(set) var sharing = false
-    @Published var error: String?
-
-    init(call: CallItem) {
-        id = call.id
-        title = call.title ?? "Встреча"
-    }
-
-    var status: String? { detail?.status }
-
-    func load() async {
-        do {
-            let d: CallDetail = try await APIClient.shared.send("GET", "calls/\(id)")
-            detail = d
-            title = d.title ?? title
-            error = nil
-        } catch {
-            self.error = error.localizedDescription
-            return
-        }
-        guard status == "done" else { return }
-        async let result = get("calls/\(id)/result", as: CallResult.self)
-        async let checklist = get("calls/\(id)/checklist", as: ChecklistResponse.self)
-        async let recommendations = get("calls/\(id)/recommendations", as: RecommendationsResponse.self)
-        async let transcript = get("calls/\(id)/transcript", as: Transcript.self)
-        async let share = get("calls/\(id)/share", as: ShareLookup.self)
-        self.result = await result
-        self.checklist = await checklist?.checklist
-        self.recommendations = await recommendations?.recommendations?.tips ?? []
-        self.transcript = await transcript?.segments ?? []
-        if let url = await share?.share?.url { shareURL = URL(string: url) }
-    }
-
-    /// Публичная ссылка создаётся только по нажатию: без действия пользователя запись не публикуем.
-    func createShare() async {
-        struct Input: Encodable { let sections: [String] }
-        sharing = true
-        defer { sharing = false }
-        do {
-            let info: ShareLinkInfo = try await APIClient.shared.send("POST", "calls/\(id)/share", body: .json(Input(sections: ["summary"])))
-            shareURL = info.url.flatMap(URL.init(string:))
-            if shareURL == nil { error = "Не удалось создать ссылку" } else { Analytics.track("share") }
-        } catch {
-            self.error = "Не удалось создать ссылку"
-        }
-    }
-
-    func rename(_ newTitle: String) async {
-        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != title else { return }
-        do {
-            let _: StatusResponse = try await APIClient.shared.send("PATCH", "mobile/calls/\(id)/title", body: .form([("title", trimmed)]))
-            title = trimmed
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    private func get<T: Decodable>(_ path: String, as type: T.Type) async -> T? {
-        try? await APIClient.shared.send("GET", path)
-    }
-}
 
 struct CallDetailView: View {
     @StateObject private var model: CallDetailModel
+    @Environment(\.dismiss) private var dismiss
     @State private var renaming = false
     @State private var newTitle = ""
+    @State private var sheet: DetailSheet?
+    @State private var confirmDelete = false
+    @State private var choosingExport = false
+    @State private var choosingFolder = false
+    @State private var namingFolder = false
+    @State private var folderName = ""
+    @State private var question = ""
+
+    enum DetailSheet: String, Identifiable {
+        case speakers, share, addSummary
+        var id: String { rawValue }
+    }
 
     init(call: CallItem) {
         _model = StateObject(wrappedValue: CallDetailModel(call: call))
@@ -86,41 +25,112 @@ struct CallDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(model.title).font(.title2.bold())
-                if let d = model.detail {
-                    Text([Format.date(d.startedAt), (d.durationSeconds ?? 0) > 0 ? Format.duration(Double(d.durationSeconds ?? 0)) : ""]
-                        .filter { !$0.isEmpty }.joined(separator: " · "))
-                        .foregroundColor(.secondary)
-                }
-                if let error = model.error {
-                    Text(error).foregroundColor(.red)
-                }
+                header
                 statusBlock
-                if model.status == "done" { resultBlock }
+                if let player = model.player, model.isDone || model.status == "error" {
+                    AudioPlayerView(player: player)
+                }
+                if model.isDone {
+                    OnboardingTip(.detailsTabs) {
+                        Picker("Раздел", selection: Binding(get: { model.tab }, set: { tab in Task { await model.select(tab) } })) {
+                            ForEach(DetailTab.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    switch model.tab {
+                    case .summary: summaryPane
+                    case .transcript: TranscriptPane(model: model) { sheet = .speakers }
+                    case .chat: ChatPane(model: model)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
         }
+        .safeAreaInset(edge: .bottom) {
+            if model.isDone && model.tab == .chat { chatInput }
+        }
         .navigationTitle("Детали встречи")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            Button { newTitle = model.title; renaming = true } label: { Image(systemName: "pencil") }
-                .accessibilityLabel("Переименовать")
-        }
+        .toolbar { toolbar }
         .alert("Название встречи", isPresented: $renaming) {
             TextField("Введите название...", text: $newTitle)
             Button("Сохранить") { Task { await model.rename(newTitle) } }
             Button("Отмена", role: .cancel) {}
         }
+        .alert(model.notice ?? "", isPresented: Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } })) {
+            Button("OK", role: .cancel) {}
+        }
+        .alert("Новая папка", isPresented: $namingFolder) {
+            TextField("Название", text: $folderName)
+            Button("Создать и перенести") { Task { await model.createFolderAndMove(folderName) } }
+            Button("Отмена", role: .cancel) {}
+        }
+        .confirmationDialog("Удалить запись?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Удалить", role: .destructive) { Task { await model.trash() } }
+        } message: {
+            Text("Запись уйдёт в корзину. 30 дней её можно вернуть из папок на экране встреч, потом она удалится навсегда.")
+        }
+        .confirmationDialog("Скачать файлом", isPresented: $choosingExport, titleVisibility: .visible) {
+            // Форматы как в веб-кабинете (salvio-web services/export.py). PDF там это печать html, на телефоне не нужен.
+            Button("Итоги · Word") { export("summary", "docx") }
+            Button("Итоги · текст") { export("summary", "txt") }
+            Button("Итоги · Markdown") { export("summary", "md") }
+            Button("Транскрипт · Word") { export("transcript", "docx") }
+            Button("Транскрипт · текст") { export("transcript", "txt") }
+            Button("Транскрипт · субтитры SRT") { export("transcript", "srt") }
+        }
+        .confirmationDialog("Перенести в папку", isPresented: $choosingFolder, titleVisibility: .visible) {
+            Button("Без папки") { Task { await model.move(to: nil) } }
+            ForEach(model.folders) { folder in
+                Button(folder.name) { Task { await model.move(to: folder) } }
+            }
+            Button("Новая папка…") { folderName = ""; namingFolder = true }
+        }
+        .sheet(item: $sheet) { sheet in
+            switch sheet {
+            case .speakers: SpeakersSheet(model: model)
+            case .share: ShareSheet(model: model)
+            case .addSummary:
+                ScenarioPickerView(title: "Итоги по другому шаблону") { scenario in
+                    Task { await model.addSummary(scenarioId: scenario.id) }
+                }
+            }
+        }
+        .sheet(item: Binding(get: { model.exportFile.map(IdentifiedURL.init) }, set: { model.exportFile = $0?.url })) {
+            ActivityView(items: [$0.url])
+        }
+        .onChange(of: model.trashed) { trashed in if trashed { dismiss() } }
+        .onDisappear { model.player?.pause() }
         .refreshable { await model.load() }
-        .task {
-            Analytics.track("meeting_open")
-            // Пока запись обрабатывается, опрашиваем раз в 10 секунд.
+        .task { Analytics.track("meeting_open") }
+        .task(id: model.pollGeneration) {
+            // Пока запись обрабатывается, опрашиваем раз в 10 секунд. Перезапуск обработки начинает опрос заново.
             repeat {
                 await model.load()
                 guard model.detail == nil || Format.isProcessing(model.status) else { break }
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
             } while !Task.isCancelled
+        }
+    }
+
+    private func export(_ what: String, _ fmt: String) {
+        Task { await model.export(what: what, fmt: fmt) }
+    }
+
+    // MARK: Шапка и статус
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(model.title).font(.title2.bold())
+            if let d = model.detail {
+                Text([Format.date(d.startedAt), (d.durationSeconds ?? 0) > 0 ? Format.duration(Double(d.durationSeconds ?? 0)) : ""]
+                    .filter { !$0.isEmpty }.joined(separator: " · "))
+                    .foregroundColor(.secondary)
+            }
+            if let error = model.error {
+                Text(error).foregroundColor(.red)
+            }
         }
     }
 
@@ -135,10 +145,25 @@ struct CallDetailView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+        case "error"? where model.detail?.errorCode == "no_speech":
+            GroupBox {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("В записи не слышно речи", systemImage: "mic.slash").font(.headline)
+                    Text("Проверьте, что микрофон не закрыт и телефон не в кармане. Минуты за эту запись не списаны.")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         case "error"?:
             GroupBox {
-                Text("Не удалось обработать запись. Напишите в поддержку, аудио сохранено на сервере.")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Не удалось обработать запись", systemImage: "exclamationmark.triangle").font(.headline)
+                    Text("Аудио сохранено на сервере. Попробуйте обработать её заново.")
+                    Button(model.restarting ? "Отправляем…" : "Обработать заново") {
+                        Task { await model.restart(retranscribe: true) }
+                    }
+                    .disabled(model.restarting)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         case "done"?, nil:
             EmptyView()
@@ -150,25 +175,108 @@ struct CallDetailView: View {
         }
     }
 
-    @ViewBuilder private var resultBlock: some View {
-        if let url = model.detail?.audioUrl.flatMap(URL.init(string:)) {
-            AudioPlayerView(url: url, fallbackDuration: Double(model.detail?.durationSeconds ?? 0))
+    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            if model.isDone {
+                Button { sheet = .share } label: { Image(systemName: "square.and.arrow.up") }
+                    .accessibilityLabel("Поделиться")
+            }
+            OnboardingTip(.detailsMenu, enabled: model.isDone) {
+                Menu {
+                    Button { newTitle = model.title; renaming = true } label: { Label("Переименовать", systemImage: "pencil") }
+                    if model.isDone {
+                        Button {
+                            Task { await model.select(.transcript) }
+                            sheet = .speakers
+                        } label: { Label("Спикеры", systemImage: "person.2") }
+                        Button { choosingExport = true } label: { Label("Скачать файлом", systemImage: "arrow.down.doc") }
+                            .disabled(model.exporting)
+                        Button { sheet = .addSummary } label: { Label("Итоги по другому шаблону", systemImage: "doc.badge.plus") }
+                        Button { Task { await model.restart(retranscribe: false) } } label: {
+                            Label("Пересобрать итоги", systemImage: "arrow.clockwise")
+                        }
+                    }
+                    if model.isDone || model.status == "error" {
+                        Button { Task { await model.restart(retranscribe: true) } } label: {
+                            Label("Распознать заново", systemImage: "waveform")
+                        }
+                    }
+                    if model.detail != nil {
+                        Button {
+                            Task { await model.loadFolders() }
+                            choosingFolder = true
+                        } label: { Label("Перенести в папку", systemImage: "folder") }
+                        Button(role: .destructive) { confirmDelete = true } label: { Label("Удалить", systemImage: "trash") }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("Ещё")
+            }
         }
-        shareBlock
+    }
+
+    // MARK: Итоги
+
+    @ViewBuilder private var summaryPane: some View {
+        let primaryId = model.summaries.first { $0.isPrimary == true }?.id
+        if model.summaries.count > 1 || model.selectedSummaryId != nil {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    // У старых записей основных итогов в списке вкладок может не быть: без этой кнопки к ним не вернуться.
+                    if primaryId == nil {
+                        chip("★ Основные", selected: model.selectedSummaryId == nil) { model.selectedSummaryId = nil }
+                    }
+                    ForEach(model.summaries) { tab in
+                        let selected = (model.selectedSummaryId ?? primaryId) == tab.id
+                        chip((tab.isPrimary == true ? "★ " : "") + (tab.title ?? "Итоги"), selected: selected) {
+                            model.selectedSummaryId = tab.isPrimary == true ? nil : tab.id
+                        }
+                    }
+                }
+            }
+        }
+        if let extra = model.selectedSummary {
+            extraSummary(extra)
+        } else {
+            mainSummary
+        }
+    }
+
+    private func chip(_ text: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text).lineLimit(1).padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Capsule().fill(selected ? Color.accentColor.opacity(0.2) : Color(.secondarySystemBackground)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private func extraSummary(_ tab: SummaryTab) -> some View {
+        if tab.pending {
+            HStack(spacing: 12) {
+                ProgressView()
+                Text("Итоги по шаблону «\(tab.title ?? "")» собираются, это займёт около минуты").foregroundColor(.secondary)
+            }
+        } else if tab.status == "failed" {
+            Text(tab.error ?? "Не удалось собрать итоги").foregroundColor(.secondary)
+        } else {
+            sections(tab.sections ?? [])
+            if tab.kind != "chat" {
+                Button("Сделать основными") { Task { await model.makePrimary(tab.id) } }
+            }
+        }
+    }
+
+    @ViewBuilder private var mainSummary: some View {
         if let label = model.result?.scenario?.label {
             Text(label).font(.subheadline).foregroundColor(.secondary)
         }
-        let sections = (model.result?.sections ?? []).filter { !$0.text.isEmpty }
-        if sections.isEmpty {
+        let list = (model.result?.sections ?? []).filter { !$0.text.isEmpty }
+        if list.isEmpty {
             Text(model.result?.error ?? "Итоги ещё не сформированы").foregroundColor(.secondary)
         }
-        ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-            GroupBox(section.title ?? "") {
-                Text(section.text)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
+        sections(list)
+        Button("+ Итоги по другому шаблону") { sheet = .addSummary }
         GroupBox("Рекомендации тренера") {
             VStack(alignment: .leading, spacing: 12) {
                 if model.recommendations.isEmpty {
@@ -187,46 +295,43 @@ struct CallDetailView: View {
         if let checklist = model.checklist, !checklist.categories.isEmpty {
             ChecklistBlock(checklist: checklist)
         }
-        if !model.transcript.isEmpty {
-            GroupBox {
-                DisclosureGroup("Транскрипт") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(model.transcript.enumerated()), id: \.offset) { _, seg in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(seg.speakerLabel ?? "").font(.caption.bold()).foregroundColor(.secondary)
-                                Text(seg.text ?? "").textSelection(.enabled)
-                            }
-                        }
-                    }
-                    .padding(.top, 8)
+    }
+
+    private func sections(_ list: [ResultSection]) -> some View {
+        ForEach(Array(list.filter { !$0.text.isEmpty }.enumerated()), id: \.offset) { _, section in
+            GroupBox(section.title ?? "") {
+                Text(section.text)
+                    .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                }
             }
         }
     }
 
-    @ViewBuilder private var shareBlock: some View {
-        if let url = model.shareURL {
-            ShareLink(item: url,
-                      subject: Text(model.title),
-                      message: Text(Format.shareText(title: model.title, sections: model.result?.sections ?? []))) {
-                Label("Поделиться", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
+    // MARK: Чат
+
+    private var chatInput: some View {
+        HStack {
+            TextField("Вопрос о встрече", text: $question, axis: .vertical)
+                .lineLimit(1...4)
+                .textFieldStyle(.roundedBorder)
+            Button {
+                let q = question
+                question = ""
+                Task { await model.ask(q) }
+            } label: {
+                Image(systemName: "paperplane.fill")
             }
-            .buttonStyle(.borderedProminent)
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                Button {
-                    Task { await model.createShare() }
-                } label: {
-                    Label(model.sharing ? "Создаём ссылку…" : "Поделиться записью", systemImage: "link").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(model.sharing)
-                Text("Создаст публичную ссылку на итоги встречи, открыть её можно без регистрации")
-                    .font(.footnote).foregroundColor(.secondary)
-            }
+            .disabled(question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.chatSending)
+            .accessibilityLabel("Отправить вопрос")
         }
+        .padding()
+        .background(.bar)
     }
+}
+
+private struct IdentifiedURL: Identifiable {
+    let url: URL
+    var id: String { url.path }
 }
 
 private struct ChecklistBlock: View {
@@ -251,4 +356,3 @@ private struct ChecklistBlock: View {
         }
     }
 }
-

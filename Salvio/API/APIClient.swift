@@ -19,20 +19,24 @@ final class APIClient {
         self.session = session
     }
 
-    func send<T: Decodable>(_ method: String = "GET", _ path: String, body: RequestBody? = nil, auth: Bool = true) async throws -> T {
-        let data = try await raw(method, path, body: body, auth: auth)
+    func send<T: Decodable>(_ method: String = "GET", _ path: String, body: RequestBody? = nil, auth: Bool = true,
+                            decoder: JSONDecoder = .api, timeout: TimeInterval = 30, oneShot: Bool = false) async throws -> T {
+        let data = try await raw(method, path, body: body, auth: auth, timeout: timeout, oneShot: oneShot)
         do {
-            return try JSONDecoder.api.decode(T.self, from: data)
+            return try decoder.decode(T.self, from: data)
         } catch {
             throw APIError(status: 200, code: "decode", message: "Не удалось прочитать ответ сервера", details: nil)
         }
     }
 
-    func raw(_ method: String, _ path: String, body: RequestBody? = nil, auth: Bool = true) async throws -> Data {
-        var (data, status) = try await perform(method, path, body: body, auth: auth)
+    /// oneShot: запрос своим соединением. Под частью VPN соединение замирает после ~16 КБ, а URLSession по HTTP/2
+    /// гонит все запросы одним соединением; новая эфемерная сессия открывает новое (транскрипт частями).
+    func raw(_ method: String, _ path: String, body: RequestBody? = nil, auth: Bool = true,
+             timeout: TimeInterval = 30, oneShot: Bool = false) async throws -> Data {
+        var (data, status) = try await perform(method, path, body: body, auth: auth, timeout: timeout, oneShot: oneShot)
         if status == 401, auth, TokenStore.refresh != nil {
             try await refreshTokens()
-            (data, status) = try await perform(method, path, body: body, auth: auth)
+            (data, status) = try await perform(method, path, body: body, auth: auth, timeout: timeout, oneShot: oneShot)
         }
         guard (200..<300).contains(status) else { throw APIError.parse(status: status, data: data) }
         return data
@@ -82,8 +86,12 @@ final class APIClient {
         return fields.map { "\(enc($0.0))=\(enc($0.1))" }.joined(separator: "&")
     }
 
-    private func perform(_ method: String, _ path: String, body: RequestBody?, auth: Bool) async throws -> (Data, Int) {
-        let request = Self.makeRequest(method, path, body: body, token: auth ? TokenStore.access : nil)
+    private func perform(_ method: String, _ path: String, body: RequestBody?, auth: Bool,
+                         timeout: TimeInterval = 30, oneShot: Bool = false) async throws -> (Data, Int) {
+        var request = Self.makeRequest(method, path, body: body, token: auth ? TokenStore.access : nil)
+        request.timeoutInterval = timeout
+        let session = oneShot ? URLSession(configuration: .ephemeral) : self.session
+        defer { if oneShot { session.finishTasksAndInvalidate() } }
         do {
             let (data, response) = try await session.data(for: request)
             return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)

@@ -15,7 +15,9 @@ enum Format {
     }
 
     /// Статусы звонка на сервере, тексты как в Android 1.3.
-    static func status(_ status: String?) -> String {
+    static func status(_ status: String?, errorCode: String? = nil) -> String {
+        // Запись без речи сервер отдаёт как error + error_code=no_speech и возвращает за неё минуты.
+        if status == "error", errorCode == "no_speech" { return "Нет речи" }
         switch status {
         case "pending_upload": return "Ожидает отправки"
         case "uploading": return "Выгружается..."
@@ -30,6 +32,13 @@ enum Format {
 
     static func isProcessing(_ status: String?) -> Bool {
         !["done", "error", "awaiting_payment"].contains(status ?? "")
+    }
+
+    /// Имя файла экспорта без символов, запрещённых в именах файлов.
+    static func fileName(_ title: String) -> String {
+        let cleaned = title.components(separatedBy: CharacterSet(charactersIn: #"\/:*?"<>|"#)).joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "Запись" : String(cleaned.prefix(80))
     }
 
     /// Текст для «Поделиться»: заголовок и секции сценария.

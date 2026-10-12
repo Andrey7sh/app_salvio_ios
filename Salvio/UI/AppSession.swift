@@ -44,6 +44,12 @@ final class AppSession: ObservableObject {
         await loadWorkspaces()
     }
 
+    /// Шаблон итогов по умолчанию, общий с веб-кабинетом. В команде его меняет только администратор: сервер ответит 403.
+    func setDefaultScenario(_ scenarioId: String) async throws {
+        _ = try await MeetingAPI.setDefaultScenario(scenarioId)
+        await refresh()
+    }
+
     /// Повторное письмо подтверждения почты. Почта уже подтверждена: обновляем пользователя, напоминание пропадёт.
     func resendVerifyEmail() async throws {
         struct Result: Decodable { let alreadyVerified: Bool }
