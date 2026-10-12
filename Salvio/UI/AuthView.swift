@@ -11,6 +11,13 @@ struct AuthView: View {
     @State private var agreed = false
     @State private var busy = false
     @State private var error: String?
+    // Опечатка в домене (gail.com, mail.ry): такую почту не подтвердить, а без подтверждения нет бонуса.
+    // Подсказка, не блокировка: первое «Зарегистрироваться» с такой почтой только показывает её, второе регистрирует как есть.
+    // Событие шлём один раз на почту: потеря фокуса и нажатие кнопки идут подряд.
+    @State private var emailHint: String?
+    @State private var hintReportedFor: String?
+    @State private var heldFor: String?
+    @FocusState private var emailFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -26,6 +33,26 @@ struct AuthView: View {
                         .textContentType(.username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .focused($emailFocused)
+                        .onChange(of: emailFocused) { focused in
+                            if !focused && isRegister { _ = showEmailHint() }
+                        }
+                        .onChange(of: email) { _ in emailHint = nil }
+                    if isRegister, let hint = emailHint {
+                        HStack {
+                            Text("Возможно, вы имели в виду \(hint.split(separator: "@").last.map(String.init) ?? hint)?")
+                                .font(.footnote)
+                                .foregroundColor(.accentColor)
+                            Spacer()
+                            Button("Исправить") {
+                                email = hint
+                                emailHint = nil
+                                Analytics.track("email_typo_fixed")
+                            }
+                            .font(.footnote.bold())
+                            .buttonStyle(.borderless)
+                        }
+                    }
                     SecureField(isRegister ? "Пароль, минимум 6 символов" : "Пароль", text: $password)
                         .textContentType(isRegister ? .newPassword : .password)
                     if isRegister {
@@ -65,7 +92,21 @@ struct AuthView: View {
         }
     }
 
+    private func showEmailHint() -> String? {
+        let hint = EmailTypo.suggest(email)
+        emailHint = hint
+        if hint != nil && hintReportedFor != email {
+            hintReportedFor = email
+            Analytics.track("email_typo_hint")
+        }
+        return hint
+    }
+
     private func submit() {
+        if isRegister, showEmailHint() != nil, heldFor != email {
+            heldFor = email
+            return
+        }
         error = isRegister
             ? AuthForm.registerError(name: name, email: email, password: password, repeat: again, agreed: agreed)
             : AuthForm.loginError(email: email, password: password, agreed: agreed)
