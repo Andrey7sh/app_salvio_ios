@@ -22,7 +22,19 @@ struct CallDetailView: View {
         _model = StateObject(wrappedValue: CallDetailModel(call: call))
     }
 
+    // Тело разбито на части: одной цепочкой модификаторов компилятор не успевал вывести типы.
     var body: some View {
+        withDialogs
+            .sheet(item: $sheet) { sheet in sheetView(sheet) }
+            .sheet(item: exportBinding) { file in ActivityView(items: [file.url]) }
+            .onChange(of: model.trashed) { trashed in if trashed { dismiss() } }
+            .onDisappear { model.player?.pause() }
+            .refreshable { await model.load() }
+            .task { Analytics.track("meeting_open") }
+            .task(id: model.pollGeneration) { await poll() }
+    }
+
+    private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
@@ -31,17 +43,8 @@ struct CallDetailView: View {
                     AudioPlayerView(player: player)
                 }
                 if model.isDone {
-                    OnboardingTip(.detailsTabs) {
-                        Picker("Раздел", selection: Binding(get: { model.tab }, set: { tab in Task { await model.select(tab) } })) {
-                            ForEach(DetailTab.allCases) { Text($0.rawValue).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                    }
-                    switch model.tab {
-                    case .summary: summaryPane
-                    case .transcript: TranscriptPane(model: model) { sheet = .speakers }
-                    case .chat: ChatPane(model: model)
-                    }
+                    OnboardingTip(.detailsTabs) { tabPicker }
+                    tabContent
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -53,68 +56,102 @@ struct CallDetailView: View {
         .navigationTitle("Детали встречи")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
-        .alert("Название встречи", isPresented: $renaming) {
-            TextField("Введите название...", text: $newTitle)
-            Button("Сохранить") { Task { await model.rename(newTitle) } }
-            Button("Отмена", role: .cancel) {}
+    }
+
+    private var tabSelection: Binding<DetailTab> {
+        Binding(get: { model.tab }, set: { tab in Task { await model.select(tab) } })
+    }
+
+    private var tabPicker: some View {
+        Picker("Раздел", selection: tabSelection) {
+            ForEach(DetailTab.allCases) { tab in Text(tab.rawValue).tag(tab) }
         }
-        .alert(model.notice ?? "", isPresented: Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } })) {
-            Button("OK", role: .cancel) {}
+        .pickerStyle(.segmented)
+    }
+
+    @ViewBuilder private var tabContent: some View {
+        switch model.tab {
+        case .summary: summaryPane
+        case .transcript: TranscriptPane(model: model) { sheet = .speakers }
+        case .chat: ChatPane(model: model)
         }
-        .alert("Новая папка", isPresented: $namingFolder) {
-            TextField("Название", text: $folderName)
-            Button("Создать и перенести") { Task { await model.createFolderAndMove(folderName) } }
-            Button("Отмена", role: .cancel) {}
-        }
-        .confirmationDialog("Удалить запись?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Удалить", role: .destructive) { Task { await model.trash() } }
-        } message: {
-            Text("Запись уйдёт в корзину. 30 дней её можно вернуть из папок на экране встреч, потом она удалится навсегда.")
-        }
-        .confirmationDialog("Скачать файлом", isPresented: $choosingExport, titleVisibility: .visible) {
-            // Форматы как в веб-кабинете (salvio-web services/export.py). PDF там это печать html, на телефоне не нужен.
-            // У старых записей без строки итогов сервер отвечает 404: не предлагаем то, чего нет.
-            if model.selectedSummary != nil || model.summaries.contains(where: { $0.isPrimary == true }) {
-                Button("Итоги · Word") { export("summary", "docx") }
-                Button("Итоги · текст") { export("summary", "txt") }
-                Button("Итоги · Markdown") { export("summary", "md") }
+    }
+
+    private var noticeShown: Binding<Bool> {
+        Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } })
+    }
+
+    private var exportBinding: Binding<IdentifiedURL?> {
+        Binding(get: { model.exportFile.map { IdentifiedURL(url: $0) } }, set: { model.exportFile = $0?.url })
+    }
+
+    private var withAlerts: some View {
+        content
+            .alert("Название встречи", isPresented: $renaming) {
+                TextField("Введите название...", text: $newTitle)
+                Button("Сохранить") { Task { await model.rename(newTitle) } }
+                Button("Отмена", role: .cancel) {}
             }
-            Button("Транскрипт · Word") { export("transcript", "docx") }
-            Button("Транскрипт · текст") { export("transcript", "txt") }
-            Button("Транскрипт · субтитры SRT") { export("transcript", "srt") }
-        }
-        .confirmationDialog("Перенести в папку", isPresented: $choosingFolder, titleVisibility: .visible) {
-            Button("Без папки") { Task { await model.move(to: nil) } }
-            ForEach(model.folders) { folder in
-                Button(folder.name) { Task { await model.move(to: folder) } }
+            .alert(model.notice ?? "", isPresented: noticeShown) {
+                Button("OK", role: .cancel) {}
             }
-            Button("Новая папка…") { folderName = ""; namingFolder = true }
+            .alert("Новая папка", isPresented: $namingFolder) {
+                TextField("Название", text: $folderName)
+                Button("Создать и перенести") { Task { await model.createFolderAndMove(folderName) } }
+                Button("Отмена", role: .cancel) {}
+            }
+    }
+
+    private var withDialogs: some View {
+        withAlerts
+            .confirmationDialog("Удалить запись?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Удалить", role: .destructive) { Task { await model.trash() } }
+            } message: {
+                Text("Запись уйдёт в корзину. 30 дней её можно вернуть из папок на экране встреч, потом она удалится навсегда.")
+            }
+            .confirmationDialog("Скачать файлом", isPresented: $choosingExport, titleVisibility: .visible) { exportButtons }
+            .confirmationDialog("Перенести в папку", isPresented: $choosingFolder, titleVisibility: .visible) { folderButtons }
+    }
+
+    /// Форматы как в веб-кабинете (salvio-web services/export.py). PDF там это печать html, на телефоне не нужен.
+    @ViewBuilder private var exportButtons: some View {
+        // У старых записей без строки итогов сервер отвечает 404: не предлагаем то, чего нет.
+        if model.selectedSummary != nil || model.summaries.contains(where: { $0.isPrimary == true }) {
+            Button("Итоги · Word") { export("summary", "docx") }
+            Button("Итоги · текст") { export("summary", "txt") }
+            Button("Итоги · Markdown") { export("summary", "md") }
         }
-        .sheet(item: $sheet) { sheet in
-            switch sheet {
-            case .speakers: SpeakersSheet(model: model)
-            case .share: ShareSheet(model: model)
-            case .addSummary:
-                ScenarioPickerView(title: "Итоги по другому шаблону") { scenario in
-                    Task { await model.addSummary(scenarioId: scenario.id) }
-                }
+        Button("Транскрипт · Word") { export("transcript", "docx") }
+        Button("Транскрипт · текст") { export("transcript", "txt") }
+        Button("Транскрипт · субтитры SRT") { export("transcript", "srt") }
+    }
+
+    @ViewBuilder private var folderButtons: some View {
+        Button("Без папки") { Task { await model.move(to: nil) } }
+        ForEach(model.folders) { folder in
+            Button(folder.name) { Task { await model.move(to: folder) } }
+        }
+        Button("Новая папка…") { folderName = ""; namingFolder = true }
+    }
+
+    @ViewBuilder private func sheetView(_ sheet: DetailSheet) -> some View {
+        switch sheet {
+        case .speakers: SpeakersSheet(model: model)
+        case .share: ShareSheet(model: model)
+        case .addSummary:
+            ScenarioPickerView(title: "Итоги по другому шаблону") { scenario in
+                Task { await model.addSummary(scenarioId: scenario.id) }
             }
         }
-        .sheet(item: Binding(get: { model.exportFile.map(IdentifiedURL.init) }, set: { model.exportFile = $0?.url })) {
-            ActivityView(items: [$0.url])
-        }
-        .onChange(of: model.trashed) { trashed in if trashed { dismiss() } }
-        .onDisappear { model.player?.pause() }
-        .refreshable { await model.load() }
-        .task { Analytics.track("meeting_open") }
-        .task(id: model.pollGeneration) {
-            // Пока запись обрабатывается, опрашиваем раз в 10 секунд. Перезапуск обработки начинает опрос заново.
-            repeat {
-                await model.load()
-                guard model.detail == nil || Format.isProcessing(model.status) else { break }
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
-            } while !Task.isCancelled
-        }
+    }
+
+    /// Пока запись обрабатывается, опрашиваем раз в 10 секунд. Перезапуск обработки начинает опрос заново.
+    private func poll() async {
+        repeat {
+            await model.load()
+            guard model.detail == nil || Format.isProcessing(model.status) else { break }
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+        } while !Task.isCancelled
     }
 
     private func export(_ what: String, _ fmt: String) {
@@ -233,7 +270,7 @@ struct CallDetailView: View {
                     }
                     ForEach(model.summaries) { tab in
                         let selected = (model.selectedSummaryId ?? primaryId) == tab.id
-                        chip((tab.isPrimary == true ? "★ " : "") + (tab.title ?? "Итоги"), selected: selected) {
+                        chip(chipTitle(tab), selected: selected) {
                             model.selectedSummaryId = tab.isPrimary == true ? nil : tab.id
                         }
                     }
@@ -245,6 +282,11 @@ struct CallDetailView: View {
         } else {
             mainSummary
         }
+    }
+
+    private func chipTitle(_ tab: SummaryTab) -> String {
+        let title = tab.title ?? "Итоги"
+        return tab.isPrimary == true ? "★ " + title : title
     }
 
     private func chip(_ text: String, selected: Bool, action: @escaping () -> Void) -> some View {

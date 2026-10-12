@@ -146,99 +146,134 @@ struct CallsListView: View {
 
     enum FolderNaming { case create, rename }
 
+    // Тело разбито на части: одной цепочкой модификаторов компилятор не успевал вывести типы.
     var body: some View {
         NavigationStack {
-            List {
-                if !uploader.recordings.isEmpty, !model.filtered {
-                    Section("На телефоне") {
-                        ForEach(uploader.recordings) { rec in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(rec.title)
-                                Text(localStatus(rec)).font(.footnote).foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                }
-                if let error = model.error {
-                    Text(error).foregroundColor(.red)
-                }
-                if model.offline {
-                    Label("Нет связи с сервером, показаны сохранённые встречи", systemImage: "wifi.slash")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                }
-                Section {
-                    ForEach(model.items) { item in
-                        Group {
-                            if model.inTrash {
-                                Button { trashItem = item } label: { CallRow(item: item) }.buttonStyle(.plain)
-                            } else {
-                                NavigationLink(value: item) { CallRow(item: item) }
-                            }
-                        }
-                        .onAppear {
-                            if item.id == model.items.last?.id { Task { await model.loadMore() } }
+            dialogs
+        }
+    }
+
+    private var list: some View {
+        List {
+            if !uploader.recordings.isEmpty, !model.filtered {
+                Section("На телефоне") {
+                    ForEach(uploader.recordings) { rec in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(rec.title)
+                            Text(localStatus(rec)).font(.footnote).foregroundColor(.secondary)
                         }
                     }
                 }
             }
-            .overlay { emptyState }
-            .searchable(text: $model.query, prompt: "Название, слова из разговора или итогов")
-            // Ждём паузу в наборе, чтобы не дёргать сервер на каждую букву.
-            .task(id: model.query) {
-                try? await Task.sleep(nanoseconds: 400_000_000)
-                if !Task.isCancelled, model.loaded { await model.search() }
+            if let error = model.error {
+                Text(error).foregroundColor(.red)
             }
-            .refreshable {
-                uploader.kick()
-                await model.loadFolders()
-                await model.reload()
+            if model.offline {
+                Label("Нет связи с сервером, показаны сохранённые встречи", systemImage: "wifi.slash")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
             }
-            // Список показывает текущее пространство. Сменили его здесь или в вебе: перечитываем.
-            .navigationTitle(model.folderTitle ?? session.workspaces.map { "Встречи · \($0.currentName)" } ?? "Встречи")
-            .navigationDestination(for: CallItem.self) { CallDetailView(call: $0) }
-            .toolbar { ToolbarItem(placement: .primaryAction) { foldersMenu } }
-            .task(id: session.workspaces?.current) { await model.enter(workspace: session.workspaces?.current) }
-            .task { await session.loadWorkspaces() }
-            // Вернулись с экрана встречи: её могли удалить, перенести или переименовать.
-            .onAppear { if model.loaded { Task { await model.loadFolders(); await model.reload() } } }
-            .onChange(of: uploader.completedCount) { _ in Task { await model.reload() } }
-            .alert(model.notice ?? "", isPresented: Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } })) {
-                Button("OK", role: .cancel) {}
-            }
-            .confirmationDialog(trashItem?.title ?? "Запись", isPresented: Binding(get: { trashItem != nil }, set: { if !$0 { trashItem = nil } }),
-                                titleVisibility: .visible, presenting: trashItem) { item in
-                Button("Восстановить") { Task { await model.restore(item) } }
-                Button("Удалить навсегда", role: .destructive) { Task { await model.purge(item) } }
-            } message: { _ in
-                Text("Запись в корзине. Через 30 дней после удаления она сотрётся навсегда вместе с аудио.")
-            }
-            .alert(naming == .rename ? "Переименовать папку" : "Новая папка",
-                   isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
-                TextField("Название", text: $folderName)
-                Button("Сохранить") {
-                    let name = folderName.trimmingCharacters(in: .whitespaces)
-                    let action = naming
-                    guard !name.isEmpty else { return }
-                    Task {
-                        if action == .rename { await model.renameFolder(name) } else { await model.createFolder(name) }
+            Section {
+                ForEach(model.items) { item in
+                    Group {
+                        if model.inTrash {
+                            Button { trashItem = item } label: { CallRow(item: item) }.buttonStyle(.plain)
+                        } else {
+                            NavigationLink(value: item) { CallRow(item: item) }
+                        }
+                    }
+                    .onAppear {
+                        if item.id == model.items.last?.id { Task { await model.loadMore() } }
                     }
                 }
-                Button("Отмена", role: .cancel) {}
             }
+        }
+    }
+
+    private var screen: some View {
+        list
+        .overlay { emptyState }
+        .searchable(text: $model.query, prompt: "Название, слова из разговора или итогов")
+        // Ждём паузу в наборе, чтобы не дёргать сервер на каждую букву.
+        .task(id: model.query) {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            if !Task.isCancelled, model.loaded { await model.search() }
+        }
+        .refreshable {
+            uploader.kick()
+            await model.loadFolders()
+            await model.reload()
+        }
+        // Список показывает текущее пространство. Сменили его здесь или в вебе: перечитываем.
+        .navigationTitle(title)
+        .navigationDestination(for: CallItem.self) { CallDetailView(call: $0) }
+        .toolbar { ToolbarItem(placement: .primaryAction) { foldersMenu } }
+        .task(id: session.workspaces?.current) { await model.enter(workspace: session.workspaces?.current) }
+        .task { await session.loadWorkspaces() }
+        // Вернулись с экрана встречи: её могли удалить, перенести или переименовать.
+        .onAppear { if model.loaded { Task { await model.loadFolders(); await model.reload() } } }
+        .onChange(of: uploader.completedCount) { _ in Task { await model.reload() } }
+    }
+
+    private var title: String {
+        if let folder = model.folderTitle { return folder }
+        if let ws = session.workspaces { return "Встречи · " + ws.currentName }
+        return "Встречи"
+    }
+
+    private func counted(_ name: String, _ n: Int?) -> String {
+        guard let n else { return name }
+        return name + " (" + String(n) + ")"
+    }
+
+    private var noticeShown: Binding<Bool> {
+        Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } })
+    }
+
+    private var trashShown: Binding<Bool> {
+        Binding(get: { trashItem != nil }, set: { if !$0 { trashItem = nil } })
+    }
+
+    private var namingShown: Binding<Bool> {
+        Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })
+    }
+
+    private var dialogs: some View {
+        screen
+        .alert(model.notice ?? "", isPresented: noticeShown) {
+            Button("OK", role: .cancel) {}
+        }
+        .confirmationDialog(trashItem?.title ?? "Запись", isPresented: trashShown,
+                            titleVisibility: .visible, presenting: trashItem) { item in
+            Button("Восстановить") { Task { await model.restore(item) } }
+            Button("Удалить навсегда", role: .destructive) { Task { await model.purge(item) } }
+        } message: { _ in
+            Text("Запись в корзине. Через 30 дней после удаления она сотрётся навсегда вместе с аудио.")
+        }
+        .alert(naming == .rename ? "Переименовать папку" : "Новая папка",
+               isPresented: namingShown) {
+            TextField("Название", text: $folderName)
+            Button("Сохранить") {
+                let name = folderName.trimmingCharacters(in: .whitespaces)
+                let action = naming
+                guard !name.isEmpty else { return }
+                Task {
+                    if action == .rename { await model.renameFolder(name) } else { await model.createFolder(name) }
+                }
+            }
+            Button("Отмена", role: .cancel) {}
         }
     }
 
     private var foldersMenu: some View {
         OnboardingTip(.listFolders) {
             Menu {
-                let f = model.folders
-                Button("Все встречи" + (f?.all.map { " (\($0))" } ?? "")) { Task { await model.open(folder: nil) } }
-                Button("Без папки" + (f?.unfiled.map { " (\($0))" } ?? "")) { Task { await model.open(folder: CallsModel.unfiled) } }
-                ForEach(f?.folders ?? []) { folder in
-                    Button("\(folder.name) (\(folder.count ?? 0))") { Task { await model.open(folder: folder.id) } }
+                Button(counted("Все встречи", model.folders?.all)) { Task { await model.open(folder: nil) } }
+                Button(counted("Без папки", model.folders?.unfiled)) { Task { await model.open(folder: CallsModel.unfiled) } }
+                ForEach(model.folders?.folders ?? []) { folder in
+                    Button(counted(folder.name, folder.count ?? 0)) { Task { await model.open(folder: folder.id) } }
                 }
-                Button("Корзина" + (f?.trash.map { " (\($0))" } ?? "")) { Task { await model.open(folder: CallsModel.trash) } }
+                Button(counted("Корзина", model.folders?.trash)) { Task { await model.open(folder: CallsModel.trash) } }
                 Divider()
                 Button { folderName = ""; naming = .create } label: { Label("Новая папка", systemImage: "folder.badge.plus") }
                 if let own = model.ownFolder {
